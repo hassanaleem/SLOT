@@ -1,14 +1,3 @@
-(set-info :smt-lib-version 2.6)
-;; This can arise from program analysis of programs checking for
-;; integer overflow with constructs like:
-;; void *calloc(size_t a, size_t b)
-;; {
-;;     if( ((size_t)-1) / a < b ){ errno = ENOMEM; return NULL; }
-;;     return memset(malloc(a*b), 0, a*b);
-;; }
-
-;; The answer is unsat.
-
 (set-logic QF_BV)
 (set-info :source |GrammaTech|)
 (set-info :category "industrial")

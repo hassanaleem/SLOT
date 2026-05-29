@@ -111,7 +111,7 @@ namespace SLOT
         if (assertions.size() == 0)
         {
             //Empty constraint is sat
-            builder.CreateRet(ConstantInt::getBool(lcx, true));
+            builder.CreateRet(ConstantInt::getTrue(lcx));
         }
         else
         {

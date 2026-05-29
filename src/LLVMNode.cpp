@@ -1,5 +1,7 @@
 #include "LLVMNode.h"
 #include "SLOTExceptions.h"
+#include "llvm/Config/llvm-config.h"
+#include "llvm/IR/Instructions.h"
 
 // Does not support any constants whose string expression
 // (base 10) is more than CONSTANT_STRING_MAX_WIDTH
@@ -16,6 +18,95 @@
 
 namespace SLOT
 {
+    namespace
+    {
+        expr ValueToSMT(Value* value, bool shiftToMultiply, context& scx, LLVMFunction& function)
+        {
+            return LLVMNode::MakeLLVMNode(shiftToMultiply, scx, function, value)->ToSMT();
+        }
+
+        expr FreshVariableForValue(Value* value, bool shiftToMultiply, context& scx, LLVMFunction& function, const std::string& prefix)
+        {
+            z3::sort value_sort = LLVMNode::MakeLLVMNode(shiftToMultiply, scx, function, value)->SMTSort();
+            std::string name = "_slot_" + prefix + "_" + std::to_string(LLVMFunction::varCounter++) + "_";
+
+            if (value_sort.is_bool())
+            {
+                return scx.bool_const(name.c_str());
+            }
+
+            if (value_sort.is_bv())
+            {
+                return scx.bv_const(name.c_str(), value_sort.bv_size());
+            }
+
+            if (value_sort.is_fpa())
+            {
+                return scx.fpa_const(name.c_str(), value_sort.fpa_ebits(), value_sort.fpa_sbits());
+            }
+
+            throw UnsupportedLLVMOpException("unsupported PHI value sort", value);
+        }
+
+        expr LowerSelectLikePHI(PHINode* phi, bool shiftToMultiply, context& scx, LLVMFunction& function)
+        {
+            auto selected = function.phiSelections.find(phi);
+            if (selected != function.phiSelections.end())
+            {
+                return ValueToSMT(const_cast<Value*>(selected->second), shiftToMultiply, scx, function);
+            }
+
+            auto cached = function.loweredValues.find(phi);
+            if (cached != function.loweredValues.end())
+            {
+                return cached->second;
+            }
+
+            if (phi->getNumIncomingValues() != 2)
+            {
+                throw UnsupportedLLVMOpException("PHI nodes with more than two incoming values are unsupported", phi);
+            }
+
+            BasicBlock* first_pred = phi->getIncomingBlock(0);
+            BasicBlock* second_pred = phi->getIncomingBlock(1);
+            BasicBlock* common_pred = first_pred->getSinglePredecessor();
+
+            if (common_pred == nullptr || common_pred != second_pred->getSinglePredecessor())
+            {
+                throw UnsupportedLLVMOpException("PHI nodes without a shared conditional predecessor are unsupported", phi);
+            }
+
+            auto* branch = dyn_cast<BranchInst>(common_pred->getTerminator());
+            if (branch == nullptr || !branch->isConditional())
+            {
+                throw UnsupportedLLVMOpException("PHI nodes without a shared conditional branch are unsupported", phi);
+            }
+
+            expr phi_value = FreshVariableForValue(phi, shiftToMultiply, scx, function, "phi");
+            function.loweredValues.emplace(phi, phi_value);
+
+            expr condition = ValueToSMT(branch->getCondition(), shiftToMultiply, scx, function);
+            expr first_value = ValueToSMT(phi->getIncomingValue(0), shiftToMultiply, scx, function);
+            expr second_value = ValueToSMT(phi->getIncomingValue(1), shiftToMultiply, scx, function);
+
+            if (branch->getSuccessor(0) == first_pred && branch->getSuccessor(1) == second_pred)
+            {
+                function.AddConstraint(implies(condition, phi_value == first_value));
+                function.AddConstraint(implies(!condition, phi_value == second_value));
+                return phi_value;
+            }
+
+            if (branch->getSuccessor(0) == second_pred && branch->getSuccessor(1) == first_pred)
+            {
+                function.AddConstraint(implies(condition, phi_value == second_value));
+                function.AddConstraint(implies(!condition, phi_value == first_value));
+                return phi_value;
+            }
+
+            throw UnsupportedLLVMOpException("PHI incoming blocks do not match the shared branch successors", phi);
+        }
+    }
+
     LLVMNode::LLVMNode(bool t_shiftToMultiply, context& t_scx, LLVMFunction& t_function, Value* t_contents) : shiftToMultiply(t_shiftToMultiply), scx(t_scx), function(t_function), contents(t_contents)
     {
 
@@ -245,9 +336,11 @@ namespace SLOT
         int bits;
         switch (id)
         {
+#if LLVM_VERSION_MAJOR >= 15
             case Intrinsic::is_fpclass:
                 bits = ((ConstantInt*)(AsInstruction()->getOperand(1)))->getSExtValue();
                 return LLVMIntrinsicCall::FPClassCheck(scx, Child(0)->ToSMT(), bits);
+#endif
             /*case Intrinsic::round:
                 return z3::round_fpa_to_closest_integer(Child(0)->ToSMT());*/
             case Intrinsic::abs:
@@ -523,6 +616,8 @@ namespace SLOT
         int rr;
         switch (Opcode()) // Instructions
         {
+            case Instruction::PHI:
+                return LowerSelectLikePHI(cast<PHINode>(AsInstruction()), shiftToMultiply, scx, function);
             //Special case: umul.with.overflow followed by extract value
             case Instruction::ExtractValue:
                 child = ((Instruction *)contents)->getOperand(0);
@@ -603,7 +698,12 @@ namespace SLOT
                     return function.AddBCVariable(Child(0));
                 }
             case Instruction::Trunc:
-                return Child(0)->ToSMT().extract(Width()-1, 0);
+                arg = Child(0)->ToSMT();
+                if (SMTSort().is_bool())
+                {
+                    return arg.extract(0, 0) == scx.bv_val(1, 1);
+                }
+                return arg.extract(Width()-1, 0);
             case Instruction::ZExt:
                 arg = Child(0)->ToSMT();
                 if (arg.is_bool()) //optimizer created zext i1

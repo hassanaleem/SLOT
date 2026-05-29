@@ -73,7 +73,7 @@ namespace SLOT
         }
         else if (IsConstant())
         {
-            return ConstantInt::getBool(lcx, contents.is_true());
+            return contents.is_true() ? ConstantInt::getTrue(lcx) : ConstantInt::getFalse(lcx);
         }
         else //Expression case
         {

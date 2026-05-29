@@ -21,6 +21,7 @@
 
 #include <iostream>
 #include <map>
+#include <vector>
 
 #include"z3++.h"
 
@@ -33,6 +34,12 @@ using namespace z3;
 
 namespace SLOT
 {
+  enum class PathExplorationStrategy
+  {
+      BFS,
+      DFS
+  };
+
   class LLVMNode;
   class LLVMFunction;
 
@@ -43,14 +50,19 @@ namespace SLOT
 
       context &scx;
       SMTMAPPING variables;
+      std::map<const Value *, expr> loweredValues;
+      std::map<const Value *, const Value *> phiSelections;
       Function *contents;
       bool shiftToMultiply;
       expr extraVariables; // Hold results of bitcast to bitvector
+      bool hasExtraConstraints;
 
       expr AddBCVariable(std::unique_ptr<LLVMNode> contents);
+      void AddConstraint(expr constraint);
 
       LLVMFunction(bool t_shiftToMultiply, context &t_scx, Function *t_contents);
       expr ToSMT();
+      std::vector<expr> ToSMTQueries(PathExplorationStrategy strategy, size_t maxPaths = 0);
 
       // bool CheckAssignment(model m);
   };

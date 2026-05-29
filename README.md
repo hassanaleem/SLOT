@@ -76,14 +76,19 @@ The SLOT executable takes the following terminal flags and arguments (which can 
 -adce         : Run aggressive dead code elimination (ADCE) pass
 -instsimplify : Run instsimplify pass
 -gvn          : Run global value numbering (GVN) pass
+-unmerge      : Run the unmerge/lower-select pass
+-nounmerge    : Disable unmerge/lower-select, including when -pall is used
 ```
-The `-lo` and `-lu` optional flags allow users to see the LLVM IR produced by SLOT before and after optimization. By default, both statistics and the output simplified constraint are sent to stdout, but these can be redirected to files with the `-o` and `-t` flags. Flags are also provided for each of the relevant optimization passes (see the accepted paper for further details), in addition to the `-pall` flag which runs all passes.
+The `-lo` and `-lu` optional flags allow users to see the LLVM IR produced by SLOT before and after optimization. By default, both statistics and the output simplified constraint are sent to stdout, but these can be redirected to files with the `-o` and `-t` flags. Flags are also provided for each of the relevant optimization passes (see the accepted paper for further details), in addition to the `-pall` flag which runs all passes. Use `-pall -nounmerge` to run the optimization pipeline without unmerging.
 
 SLOT's output statistics take the following form:
 ```
 samples/multiplyOverflow.smt2,true,1,1,1,1,1,1,1,1,0.0188988,0.0019054,0.00338006,1,0,1,0,1,0,0,0
 ```
-This output is, in order, the filename; true or false representing whether the `-m` flag was passed; 8 binary digits representing which of the 8 possible passes was *requested by the user*; three time values (in seconds) corresponding to the amount of time spent on frontend, optimization, and backend; and 8 more binary digits representing which of the 8 possible passes *affected the input constraint*.
+This output is, in order, the filename; true or false representing whether the `-m` flag was passed; the path exploration strategy; 9 binary digits representing which passes were *requested by the user*; three time values (in seconds) corresponding to the amount of time spent on frontend, optimization, and backend; 9 more binary digits representing which passes *affected the input constraint*; and per-pass optimization times in seconds.
+
+The appended per-pass timing fields are ordered as:
+`instcombine,ainstcombine,earlycse,reassociate,sccp,dce,adce,instsimplify,gvn,unmerge`. The instcombine and aggressive instcombine values include both invocations in SLOT's optimization pipeline.
 
 
 
