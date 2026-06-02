@@ -1,0 +1,6 @@
+benchmark,input,slot_time,chain_total_seconds,first_total_seconds,last_total_seconds,random_total_seconds,all-bfs_total_seconds,all-dfs_total_seconds
+innd_innd_vc32481,/home/hassan/Desktop/SLOT/scripts/../slot-benchmark-sat-with-select/QF_BV/spear/inn_v2.4.3/innd_innd_vc32481.smt2,1.36353,0.327,0.327,0.328,0.327,0.421,0.411
+innd_innd_vc32499,/home/hassan/Desktop/SLOT/scripts/../slot-benchmark-sat-with-select/QF_BV/spear/inn_v2.4.3/innd_innd_vc32499.smt2,1.0875,0.323,0.33,0.332,0.342,0.449,0.43
+innd_innd_vc32635,/home/hassan/Desktop/SLOT/scripts/../slot-benchmark-sat-with-select/QF_BV/spear/inn_v2.4.3/innd_innd_vc32635.smt2,1.3664,0.321,0.329,0.315,0.313,0.403,0.39
+innd_innd_vc32662,/home/hassan/Desktop/SLOT/scripts/../slot-benchmark-sat-with-select/QF_BV/spear/inn_v2.4.3/innd_innd_vc32662.smt2,19.4069,0.392,0.388,0.397,0.388,0.539,0.515
+innd_innd_vc32740,/home/hassan/Desktop/SLOT/scripts/../slot-benchmark-sat-with-select/QF_BV/spear/inn_v2.4.3/innd_innd_vc32740.smt2,0.867729,0.185,0.195,0.193,0.19,0.221,0.218

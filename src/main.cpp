@@ -67,6 +67,7 @@ void Help()
   std::cout << "   -unmerge-first <n>  : Lower only the first n select instructions\n";
   std::cout << "   -unmerge-last <n>   : Lower only the last n select instructions\n";
   std::cout << "   -unmerge-random <n> : Lower n randomly chosen select instructions\n";
+  std::cout << "   -unmerge-chain <n>  : Lower the n select instructions with the deepest condition chains\n";
   std::cout << "   -unmerge-all        : Lower all select instructions (no filtering)\n";
   std::cout << "   -li <file>     : Load LLVM IR directly (skip SMT2 frontend). Requires a function named '" << LLVM_FUNCTION_NAME << "'\n";
   std::cout << "   -single-query  : Produce one SMT query using implies-based encoding (no path splitting). Avoids exponential blowup on large inputs\n";
@@ -273,22 +274,23 @@ std::string PrintPassTimings(const PassTimings &timings)
          std::to_string(timings.unmerge.count());
 }
 
-SLOT::LowerSelectConfig ParseUnmergeConfig(int argc, char *argv[], unsigned short &passes)
+LowerSelectConfig ParseUnmergeConfig(int argc, char *argv[], unsigned short &passes)
 {
   bool hasFirst = HasFlag(argc, argv, "-unmerge-first");
   bool hasLast = HasFlag(argc, argv, "-unmerge-last");
   bool hasRandom = HasFlag(argc, argv, "-unmerge-random");
+  bool hasChain = HasFlag(argc, argv, "-unmerge-chain");
   bool hasAll = HasFlag(argc, argv, "-unmerge-all");
 
-  if ((int)hasFirst + (int)hasLast + (int)hasRandom + (int)hasAll > 1)
+  if ((int)hasFirst + (int)hasLast + (int)hasRandom + (int)hasChain + (int)hasAll > 1)
   {
-    std::cerr << "Cannot specify more than one of -unmerge-first, -unmerge-last, -unmerge-random, -unmerge-all.\n";
+    std::cerr << "Cannot specify more than one of -unmerge-first, -unmerge-last, -unmerge-random, -unmerge-chain, -unmerge-all.\n";
     exit(1);
   }
 
-  SLOT::LowerSelectConfig cfg;
+  LowerSelectConfig cfg;
 
-  if (hasFirst || hasLast || hasRandom || hasAll)
+  if (hasFirst || hasLast || hasRandom || hasChain || hasAll)
   {
     if (!HasFlag(argc, argv, "-nounmerge"))
       passes |= UNMERGE;
@@ -296,7 +298,7 @@ SLOT::LowerSelectConfig ParseUnmergeConfig(int argc, char *argv[], unsigned shor
 
   if (hasAll)
   {
-    cfg.strategy = SLOT::SelectionStrategy::All;
+    cfg.strategy = SelectionStrategy::All;
   }
   else if (hasFirst)
   {
@@ -306,7 +308,7 @@ SLOT::LowerSelectConfig ParseUnmergeConfig(int argc, char *argv[], unsigned shor
       std::cerr << "Missing count for -unmerge-first.\n";
       exit(1);
     }
-    cfg.strategy = SLOT::SelectionStrategy::First;
+    cfg.strategy = SelectionStrategy::First;
     cfg.count = std::stoul(n);
   }
   else if (hasLast)
@@ -317,7 +319,7 @@ SLOT::LowerSelectConfig ParseUnmergeConfig(int argc, char *argv[], unsigned shor
       std::cerr << "Missing count for -unmerge-last.\n";
       exit(1);
     }
-    cfg.strategy = SLOT::SelectionStrategy::Last;
+    cfg.strategy = SelectionStrategy::Last;
     cfg.count = std::stoul(n);
   }
   else if (hasRandom)
@@ -328,14 +330,25 @@ SLOT::LowerSelectConfig ParseUnmergeConfig(int argc, char *argv[], unsigned shor
       std::cerr << "Missing count for -unmerge-random.\n";
       exit(1);
     }
-    cfg.strategy = SLOT::SelectionStrategy::Random;
+    cfg.strategy = SelectionStrategy::Random;
+    cfg.count = std::stoul(n);
+  }
+  else if (hasChain)
+  {
+    char *n = GetFlag(argc, argv, "-unmerge-chain");
+    if (!n)
+    {
+      std::cerr << "Missing count for -unmerge-chain.\n";
+      exit(1);
+    }
+    cfg.strategy = SelectionStrategy::Chain;
     cfg.count = std::stoul(n);
   }
 
   return cfg;
 }
 
-unsigned short RunPasses(unsigned short flags, Function &fun, PassTimings &timings, const SLOT::LowerSelectConfig &unmergeConfig)
+unsigned short RunPasses(unsigned short flags, Function &fun, PassTimings &timings, const LowerSelectConfig &unmergeConfig)
 {
   // instcombine and aggressive instcombine are run twice, according to the -O3 optimization pass sequence
   LoopAnalysisManager LAM;
@@ -603,7 +616,7 @@ unsigned short RunPasses(unsigned short flags, Function &fun, PassTimings &timin
   if (flags & UNMERGE)
   {
     auto passStart = high_resolution_clock::now();
-    SLOT::RunLowerSelectPass(fun, unmergeConfig);
+    RunLowerSelectPass(fun, unmergeConfig);
     timings.unmerge += high_resolution_clock::now() - passStart;
     if (fun.getEntryBlock().sizeWithoutDebug() != count)
     {
@@ -657,7 +670,7 @@ int main(int argc, char *argv[])
   }
 
   unsigned short parsedPasses = ParsePasses(argc, argv);
-  SLOT::LowerSelectConfig unmergeConfig = ParseUnmergeConfig(argc, argv, parsedPasses);
+  LowerSelectConfig unmergeConfig = ParseUnmergeConfig(argc, argv, parsedPasses);
   PathExplorationStrategy pathStrategy = ParsePathStrategy(argc, argv);
   bool singleQuery = HasFlag(argc, argv, "-single-query");
 

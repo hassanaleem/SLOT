@@ -46,39 +46,41 @@ run_strategy() {
     printf "strategy=%s elapsed_ms=%d\n" "$name" "$elapsed_ms" >> "$time_file"
     printf "%s,%s\n" "$name" "$(tail -n 1 "$stats_tmp")" >> "$pass_timing_file"
     rm -f "$stats_tmp"
-    echo "  $name: $((elapsed_ms / 1000)).$(printf "%03d" "$((elapsed_ms % 1000))")s"
+    printf "strategy=%s elapsed_ms=%d\n" "$name" "$elapsed_ms" >&2
     echo "$elapsed_ms"
 }
 
 # Phase 1: SMT -> simple LLVM IR
-echo "=== Phase 1: $input_base -> simple LLVM IR ==="
 start_ns=$(date +%s%N)
 timeout 300 "$slot" -s "$input_file" -lu "$simple_ll" -emit-ll-only > /dev/null
 end_ns=$(date +%s%N)
 smt_to_ll_ms=$(((end_ns - start_ns) / 1000000))
 printf "smt_to_ll elapsed_ms=%d\n" "$smt_to_ll_ms" >> "$time_file"
-echo "  smt->ll: $((smt_to_ll_ms / 1000)).$(printf "%03d" "$((smt_to_ll_ms % 1000))")s"
+printf "smt_to_ll_ms=%d\n" "$smt_to_ll_ms" >&2
 
 num_selects=$(grep -c '= select ' "$simple_ll" || true)
-max_paths=$((1 << num_selects))
+max_paths=$((1 << select_count))
 printf "num_selects=%d max_paths=%d\n" "$num_selects" "$max_paths" >> "$time_file"
-echo "  selects: $num_selects  max-paths: $max_paths"
+printf "num_selects=%d max_paths=%d\n" "$num_selects" "$max_paths" >&2
 
-# Phase 2: first / last / random (n = select_count)
-echo "=== Select strategies: $input_base (n=$select_count) ==="
+# Phase 2: first / last / random / chain (n = select_count)
 ll_to_opt_total_ms=0
-for strategy in first last random; do
+
+for strategy in first last random chain; do
     elapsed=$(run_strategy "$strategy" -li "$simple_ll" -pall "-unmerge-${strategy}" "$select_count")
     ll_to_opt_total_ms=$((ll_to_opt_total_ms + elapsed))
 done
 
 # Phase 3: all with bfs and dfs (max-paths = 2^num_selects)
-echo "=== Unmerge-all strategies: $input_base (max-paths=$max_paths) ==="
 for path_strategy in bfs dfs; do
     elapsed=$(run_strategy "all-${path_strategy}" -li "$simple_ll" -pall -unmerge-all -max-paths "$max_paths" -path-strategy "$path_strategy")
     ll_to_opt_total_ms=$((ll_to_opt_total_ms + elapsed))
 done
 
+# Phase 4: slot-optimized baseline — all passes, no select lowering
+elapsed=$(run_strategy "opt" -li "$simple_ll" -pall -nounmerge)
+ll_to_opt_total_ms=$((ll_to_opt_total_ms + elapsed))
+
 total_ms=$((smt_to_ll_ms + ll_to_opt_total_ms))
 printf "total elapsed_ms=%d\n" "$total_ms" >> "$time_file"
-echo "Done. Results in $out_dir"
+printf "total_ms=%d\n" "$total_ms" >&2

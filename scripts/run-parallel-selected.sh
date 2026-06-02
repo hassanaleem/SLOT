@@ -32,7 +32,7 @@ while IFS= read -r benchmark_path || [ -n "$benchmark_path" ]; do
     [ ! -d "$strategy_dir" ] && { echo "Strategy directory not found: $strategy_dir" >&2; exit 1; }
     : > "$log_file"
 
-    for strategy in first last random all-bfs all-dfs; do
+    for strategy in chain first last random all-bfs all-dfs; do
         run_solver "$benchmark" "$strategy" "$strategy_dir/$benchmark-${strategy}.smt2" "$log_file"
     done
 
