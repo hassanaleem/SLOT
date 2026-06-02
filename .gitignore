@@ -2,3 +2,8 @@
 *.o
 slot/main
 legacy/slot
+*_results
+QF_BV
+slow-benchmarks
+qf_bv*
+select-results-*
