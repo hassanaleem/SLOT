@@ -4,62 +4,48 @@ import re
 import sys
 from pathlib import Path
 
-STRATEGIES = ["chain", "first", "last", "random", "all-bfs", "all-dfs"]
-SLOT_LOG = "slot-optimized-time.log"
-
-
-def parse_time_file(path):
+# (type_label, file_key) — file_key is used in log filenames
+TYPES = [
+    ("slot",    "opt"),
+    ("chain",   "chain"),
+    ("first",   "first"),
+    ("last",    "last"),
+    ("random",  "random"),
+    ("all-bfs", "all-bfs"),
+    ("all-dfs", "all-dfs"),
+]
+def parse_smt_to_ll(path):
     data = {}
+    if not path.exists():
+        return data
     for line in path.read_text().splitlines():
         if line.startswith("input="):
             data["input"] = line.removeprefix("input=")
-        elif m := re.match(r"^smt_to_ll\b.*\belapsed_ms=(\d+)", line):
-            data["smt_to_ll"] = int(m.group(1)) / 1000
-        elif m := re.match(r"^strategy=(\S+)\s+elapsed_ms=(\d+)", line):
-            data[m.group(1)] = int(m.group(2)) / 1000
+        elif m := re.match(r"^elapsed_ms=(\d+)", line):
+            data["elapsed_ms"] = int(m.group(1)) / 1000
     return data
 
 
-def parse_slot_log(path):
+def parse_generation_time(path):
     if not path.exists():
-        return {}
-    timings = {}
-    benchmark, is_slot_opt = None, False
+        return None
     for line in path.read_text().splitlines():
-        if m := re.match(r"^=== benchmark (.+): (.+) ===$", line):
-            benchmark, is_slot_opt = m.group(1), m.group(2) == "slot-opt"
-        elif is_slot_opt and benchmark:
-            if m := re.search(r"\bz3_time_seconds=([0-9]+(?:\.[0-9]+)?)", line):
-                timings[benchmark] = float(m.group(1))
-    return timings
+        if m := re.match(r"^elapsed_ms=(\d+)", line):
+            return int(m.group(1)) / 1000
+    return None
 
 
 
-def parse_parallel_log(path):
+def parse_solver_time(path, key):
     if not path.exists():
-        return {}
+        return None
+    text = path.read_text()
+    if key == "opt":
+        m = re.search(r"\bz3_time_seconds=([0-9]+(?:\.[0-9]+)?)", text)
+    else:
+        m = re.search(r"^Total time: ([0-9]+(?:\.[0-9]+)?)s$", text, re.MULTILINE)
+    return float(m.group(1)) if m else None
 
-    timings = {}
-    strategy = None
-    saw_sat = False
-
-    for line in path.read_text().splitlines():
-        if m := re.match(r"^=== benchmark .+: (.+) ===$", line):
-            strategy = m.group(1)
-            saw_sat = False
-        elif strategy and line.startswith("SAT "):
-            saw_sat = True
-        elif strategy and saw_sat:
-            if m := re.match(r"^Total time: ([0-9]+(?:\.[0-9]+)?)s$", line):
-                timings[strategy] = float(m.group(1))
-                strategy = None
-                saw_sat = False
-        elif strategy and line.startswith("No satisfying query found"):
-            timings[strategy] = "unsat"
-            strategy = None
-            saw_sat = False
-
-    return timings
 
 def fmt(val):
     return f"{val:g}" if val is not None else ""
@@ -70,33 +56,31 @@ SCRIPT_DIR = Path(__file__).parent
 
 def main():
     timing_root = Path(sys.argv[1]) if len(sys.argv) > 1 else SCRIPT_DIR.parent / "select-results-strategies"
-    out_path = Path(sys.argv[2]) if len(sys.argv) > 2 else SCRIPT_DIR / "time_breakdown.csv"
+    out_path    = Path(sys.argv[2]) if len(sys.argv) > 2 else SCRIPT_DIR / "time_breakdown.csv"
 
-    header = ["benchmark", "input", "smt_to_ll_seconds", "slot_time", "slot_generation_seconds"]
-    for s in STRATEGIES:
-        header += [f"{s}_generation_seconds", f"{s}_total_seconds", f"{s}_solver_time"]
+    labels = [t for t, _ in TYPES]
+    header = (["benchmark", "input", "smt_to_ll_seconds"]
+              + [f"{t}_generation_seconds" for t in labels]
+              + [f"{t}_solver_time"        for t in labels]
+              + [f"{t}_total_seconds"      for t in labels])
 
     rows = []
-    for time_file in sorted(timing_root.glob("*/time.txt"), key=lambda p: p.parent.name):
-        benchmark = time_file.parent.name
-        data = parse_time_file(time_file)
-        slot = parse_slot_log(time_file.parent / SLOT_LOG)
-        solver_times = parse_parallel_log(time_file.parent / "parallel_solver_selected.log")
+    for timing_csv in sorted(timing_root.glob("*/logs/pass-timings.csv"), key=lambda p: p.parent.parent.name):
+        log_dir   = timing_csv.parent
+        benchmark = timing_csv.parent.parent.name
+        smt_data  = parse_smt_to_ll(log_dir / "smt-to-ll.txt")
+        smt_t     = smt_data.get("elapsed_ms")
 
-        smt_to_ll = data.get("smt_to_ll")
-        row = {
-            "benchmark": benchmark,
-            "input": data.get("input", ""),
-            "smt_to_ll_seconds": fmt(smt_to_ll),
-            "slot_time": fmt(slot.get(benchmark)),
-            "slot_generation_seconds": fmt(data.get("opt")),
-        }
-        for s in STRATEGIES:
-            gen = data.get(s)
-            total = smt_to_ll + gen if smt_to_ll is not None and gen is not None else None
-            row[f"{s}_generation_seconds"] = fmt(gen)
-            row[f"{s}_total_seconds"] = fmt(total)
-            row[f"{s}_solver_time"] = fmt(solver_times.get(s))
+        row = {"benchmark": benchmark, "input": smt_data.get("input", ""), "smt_to_ll_seconds": fmt(smt_t)}
+
+        for label, key in TYPES:
+            gen = parse_generation_time(log_dir / f"time-{key}.txt")
+            sol = parse_solver_time(log_dir / f"solver-{key}.log", key)
+            total = (smt_t + gen + sol) if None not in (smt_t, gen, sol) else None
+            row[f"{label}_generation_seconds"] = fmt(gen)
+            row[f"{label}_solver_time"]        = fmt(sol)
+            row[f"{label}_total_seconds"]      = fmt(total)
+
         rows.append(row)
 
     with out_path.open("w", newline="") as f:
