@@ -51,7 +51,7 @@ scripts/run-variant-all-benchmarks.sh opt /custom/results/dir
 ---
 
 ### `run-all-benchmarks.sh`
-Runs all strategies for every benchmark in `torun.txt`. Calls `run-all-variants.sh` per benchmark.
+Runs all strategies for every benchmark in `torun.txt`, phase-by-phase: phase 1 for all benchmarks, then phase 2 for every strategy, then phase 3 for every strategy. All query generation completes before any solving starts.
 
 ```bash
 scripts/run-all-benchmarks.sh
@@ -117,20 +117,34 @@ python3 scripts/generate_colored_table.py
 ## Shared
 
 ### `common.sh`
-Sourced by the shell scripts above. Defines shared paths and helpers — not run directly.
+Sourced by the shell scripts above. Defines shared paths and helpers — not run directly. Fails immediately if the `slot` executable is missing.
 
 | Variable | Value |
 |---|---|
 | `BENCHMARK_DIR` | `slot-benchmark-sat-with-select/` |
 | `BENCHMARK_LIST` | `torun.txt` |
 | `DEFAULT_RESULTS_DIR` | `select-results-strategies/` |
+| `SLOT` | `src/slot` |
+| `SOLVERS_DIR` | `solvers/` |
+| `PARALLEL_SOLVER` | `scripts/parallel_solver.py` |
 | `STRATEGIES` | `(first last random chain all-bfs all-dfs opt)` |
+| `SELECT_COUNT` | `5` |
+| `WORKERS` | `16` (env-overridable) |
+| `SKIP_DONE` | `1` — skip phases whose outputs exist; set `0` to always rerun (env-overridable) |
+| `COOLDOWN_SECONDS` | `5` — sleep after each solver run; set `0` to disable (env-overridable) |
 
-`foreach_benchmark <results_dir> <cmd> [args...]` — iterates `torun.txt` and calls `<cmd> [args...] <benchmark_path> <results_dir>` for each entry.
+Helpers:
+- `foreach_benchmark <results_dir> <cmd> [args...]` — iterates `torun.txt` and calls `<cmd> [args...] <benchmark_path> <results_dir>` for each entry.
+- `resolve_input <file[.smt2]> [results_dir]` — appends `.smt2` if missing; sets `input_file`, `input_base`, `out_dir`.
+- `should_skip <file> [pattern]` — true when `SKIP_DONE=1` and `<file>` exists (and contains `<pattern>`, if given). Phase 1 checks the simple `.ll`, phase 2 the strategy `.ll`+`.smt2`, phase 3 the solver log's final `exit_code:` line.
+- `strategy_flags <strategy>` — sets `slot_flags` with the slot arguments for the strategy.
+- `run_timed <cmd...>` — runs the command, sets `elapsed_ms`, returns the command's status.
 
 ---
 
 ## Legacy (superseded)
+
+Kept for reference; all three now share paths and helpers from `common.sh`.
 
 | Script | Replaced by |
 |---|---|

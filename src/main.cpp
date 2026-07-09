@@ -367,47 +367,47 @@ unsigned short RunPasses(unsigned short flags, Function &fun, PassTimings &timin
   int count = fun.getEntryBlock().sizeWithoutDebug();
   unsigned short used = 0;
 
-  // if (flags & LOOP_OPT)
-  // {
-  //   // recover possible loop structures
-  //   auto passStart = high_resolution_clock::now();
+  if (flags & LOOP_OPT)
+  {
+    // recover possible loop structures
+    auto passStart = high_resolution_clock::now();
 
-  //   // RoLAG's LoopRolling pass exposes AlwaysRoll only as a hidden cl::opt.
-  //   // Force it while the pass runs so profitability never suppresses rolling.
-  //   {
-  //     auto &clOpts = cl::getRegisteredOptions();
-  //     auto it = clOpts.find("loop-rolling-always");
+    // RoLAG's LoopRolling pass exposes AlwaysRoll only as a hidden cl::opt.
+    // Force it while the pass runs so profitability never suppresses rolling.
+    {
+      auto &clOpts = cl::getRegisteredOptions();
+      auto it = clOpts.find("loop-rolling-always");
 
-  //     if (it == clOpts.end())
-  //     {
-  //       std::cerr << "Missing RoLAG loop-rolling option: loop-rolling-always.\n";
-  //       exit(1);
-  //     }
+      if (it == clOpts.end())
+      {
+        std::cerr << "Missing RoLAG loop-rolling option: loop-rolling-always.\n";
+        exit(1);
+      }
 
-  //     auto *alwaysRoll = static_cast<cl::opt<bool> *>(it->second);
-  //     bool savedAlwaysRoll = alwaysRoll->getValue();
-  //     *alwaysRoll = true;
+      auto *alwaysRoll = static_cast<cl::opt<bool> *>(it->second);
+      bool savedAlwaysRoll = alwaysRoll->getValue();
+      *alwaysRoll = true;
 
-  //     LoopRolling().run(fun, FAM);
-  //     FAM.invalidate(fun, PreservedAnalyses::none());
+      LoopRolling().run(fun, FAM);
+      FAM.invalidate(fun, PreservedAnalyses::none());
 
-  //     *alwaysRoll = savedAlwaysRoll;
-  //   }
+      *alwaysRoll = savedAlwaysRoll;
+    }
 
-  //   // Canonicalize the loop produced by loop rolling.
+    // Canonicalize the loop produced by loop rolling.
 
-  //   // Simplify induction variables so later unrolling can analyze the loop.
-  //   // createFunctionToLoopPassAdaptor(IndVarSimplifyPass()).run(fun, FAM);
-  //   // FAM.invalidate(fun, PreservedAnalyses::none());
+    // Simplify induction variables so later unrolling can analyze the loop.
+    createFunctionToLoopPassAdaptor(IndVarSimplifyPass()).run(fun, FAM);
+    FAM.invalidate(fun, PreservedAnalyses::none());
 
-  //   timings.loopOpt += high_resolution_clock::now() - passStart;
+    timings.loopOpt += high_resolution_clock::now() - passStart;
 
-  //   if (fun.getEntryBlock().sizeWithoutDebug() != count)
-  //   {
-  //     count = fun.getEntryBlock().sizeWithoutDebug();
-  //     used |= LOOP_OPT;
-  //   }
-  // }
+    if (fun.getEntryBlock().sizeWithoutDebug() != count)
+    {
+      count = fun.getEntryBlock().sizeWithoutDebug();
+      used |= LOOP_OPT;
+    }
+  }
   if (flags & INST_COMBINE)
   {
     auto passStart = high_resolution_clock::now();
@@ -532,86 +532,86 @@ unsigned short RunPasses(unsigned short flags, Function &fun, PassTimings &timin
     }
   }
 
-  // if (flags & LOOP_OPT)
-  // {
-  //   // Re-canonicalize rolled loops so the unroller can analyse them
-  //   // LoopSimplifyPass().run(fun, FAM);
+  if (flags & LOOP_OPT)
+  {
+    // Re-canonicalize rolled loops so the unroller can analyse them
+    // LoopSimplifyPass().run(fun, FAM);
 
-  //   // LCSSAPass().run(fun, FAM);
-  //   // createFunctionToLoopPassAdaptor(IndVarSimplifyPass()).run(fun, FAM);
-  //   // FAM.invalidate(fun, PreservedAnalyses::none());
+    // LCSSAPass().run(fun, FAM);
+    // createFunctionToLoopPassAdaptor(IndVarSimplifyPass()).run(fun, FAM);
+    // FAM.invalidate(fun, PreservedAnalyses::none());
 
-  //   {
-  //     auto &clOpts = cl::getRegisteredOptions();
+    {
+      auto &clOpts = cl::getRegisteredOptions();
 
-  //     auto *thresh = static_cast<cl::opt<unsigned> *>(
-  //         clOpts.lookup("unroll-threshold"));
-  //     auto *partialThresh = static_cast<cl::opt<unsigned> *>(
-  //         clOpts.lookup("unroll-partial-threshold"));
-  //     auto *aggThresh = static_cast<cl::opt<unsigned> *>(
-  //         clOpts.lookup("unroll-threshold-aggressive"));
-  //     auto *maxCount = static_cast<cl::opt<unsigned> *>(
-  //         clOpts.lookup("unroll-max-count"));
-  //     auto *fullMax = static_cast<cl::opt<unsigned> *>(
-  //         clOpts.lookup("unroll-full-max-count"));
+      auto *thresh = static_cast<cl::opt<unsigned> *>(
+          clOpts.lookup("unroll-threshold"));
+      auto *partialThresh = static_cast<cl::opt<unsigned> *>(
+          clOpts.lookup("unroll-partial-threshold"));
+      auto *aggThresh = static_cast<cl::opt<unsigned> *>(
+          clOpts.lookup("unroll-threshold-aggressive"));
+      auto *maxCount = static_cast<cl::opt<unsigned> *>(
+          clOpts.lookup("unroll-max-count"));
+      auto *fullMax = static_cast<cl::opt<unsigned> *>(
+          clOpts.lookup("unroll-full-max-count"));
 
-  //     unsigned savedThresh = thresh ? (unsigned)*thresh : 150u;
-  //     unsigned savedPartial = partialThresh ? (unsigned)*partialThresh : 150u;
-  //     unsigned savedAgg = aggThresh ? (unsigned)*aggThresh : 300u;
-  //     unsigned savedMaxCount = maxCount ? (unsigned)*maxCount : UINT_MAX;
-  //     unsigned savedMax = fullMax ? (unsigned)*fullMax : UINT_MAX;
+      unsigned savedThresh = thresh ? (unsigned)*thresh : 150u;
+      unsigned savedPartial = partialThresh ? (unsigned)*partialThresh : 150u;
+      unsigned savedAgg = aggThresh ? (unsigned)*aggThresh : 300u;
+      unsigned savedMaxCount = maxCount ? (unsigned)*maxCount : UINT_MAX;
+      unsigned savedMax = fullMax ? (unsigned)*fullMax : UINT_MAX;
 
-  //     if (thresh)
-  //     {
-  //       thresh->reset();
-  //       thresh->addOccurrence(0, "unroll-threshold", "1000000");
-  //     }
-  //     if (partialThresh)
-  //     {
-  //       partialThresh->reset();
-  //       partialThresh->addOccurrence(0, "unroll-partial-threshold", "1000000");
-  //     }
-  //     if (aggThresh)
-  //     {
-  //       aggThresh->reset();
-  //       aggThresh->addOccurrence(0, "unroll-threshold-aggressive", "1000000");
-  //     }
-  //     if (maxCount)
-  //     {
-  //       maxCount->reset();
-  //       maxCount->addOccurrence(0, "unroll-max-count", "1000");
-  //     }
-  //     if (fullMax)
-  //     {
-  //       fullMax->reset();
-  //       fullMax->addOccurrence(0, "unroll-full-max-count", "1000");
-  //     }
+      if (thresh)
+      {
+        thresh->reset();
+        thresh->addOccurrence(0, "unroll-threshold", "1000000");
+      }
+      if (partialThresh)
+      {
+        partialThresh->reset();
+        partialThresh->addOccurrence(0, "unroll-partial-threshold", "1000000");
+      }
+      if (aggThresh)
+      {
+        aggThresh->reset();
+        aggThresh->addOccurrence(0, "unroll-threshold-aggressive", "1000000");
+      }
+      if (maxCount)
+      {
+        maxCount->reset();
+        maxCount->addOccurrence(0, "unroll-max-count", "1000");
+      }
+      if (fullMax)
+      {
+        fullMax->reset();
+        fullMax->addOccurrence(0, "unroll-full-max-count", "1000");
+      }
 
-  //     LoopUnrollPass(LoopUnrollOptions(/*OptLevel=*/3).setPartial(true).setFullUnrollMaxCount(1000u)).run(fun, FAM);
-  //     FAM.invalidate(fun, PreservedAnalyses::none());
-  //   }
+      LoopUnrollPass(LoopUnrollOptions(/*OptLevel=*/3).setPartial(true).setFullUnrollMaxCount(1000u)).run(fun, FAM);
+      FAM.invalidate(fun, PreservedAnalyses::none());
+    }
 
-  //   SimplifyCFGPass().run(fun, FAM);
-  //   FAM.invalidate(fun, PreservedAnalyses::none());
+    SimplifyCFGPass().run(fun, FAM);
+    FAM.invalidate(fun, PreservedAnalyses::none());
 
-  //   EarlyCSEPass().run(fun, FAM);
-  //   FAM.invalidate(fun, PreservedAnalyses::none());
+    EarlyCSEPass().run(fun, FAM);
+    FAM.invalidate(fun, PreservedAnalyses::none());
 
-  //   InstCombinePass().run(fun, FAM);
-  //   FAM.invalidate(fun, PreservedAnalyses::none());
+    InstCombinePass().run(fun, FAM);
+    FAM.invalidate(fun, PreservedAnalyses::none());
 
-  //   DCEPass().run(fun, FAM);
-  //   FAM.invalidate(fun, PreservedAnalyses::none());
+    DCEPass().run(fun, FAM);
+    FAM.invalidate(fun, PreservedAnalyses::none());
 
-  //   SROA().run(fun, FAM);
-  //   FAM.invalidate(fun, PreservedAnalyses::none());
+    SROA().run(fun, FAM);
+    FAM.invalidate(fun, PreservedAnalyses::none());
 
-  //   if (fun.getEntryBlock().sizeWithoutDebug() != count)
-  //   {
-  //     count = fun.getEntryBlock().sizeWithoutDebug();
-  //     used |= LOOP_OPT;
-  //   }
-  // }
+    if (fun.getEntryBlock().sizeWithoutDebug() != count)
+    {
+      count = fun.getEntryBlock().sizeWithoutDebug();
+      used |= LOOP_OPT;
+    }
+  }
 
   if (flags & UNMERGE)
   {

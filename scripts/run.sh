@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
 strategy=$1
 benchmark=$2
-script_dir=$(cd "$(dirname "$0")" && pwd)
-slot="$script_dir/../src/slot"
 name=$(basename "$benchmark" .smt2)
-out_dir="$script_dir/../select-results-strategies/$name"
+out_dir="$DEFAULT_RESULTS_DIR/$name"
 
 mkdir -p "$out_dir"
-"$slot" -s "$benchmark" -pall "-unmerge-$strategy" 5 -lu "$out_dir/$name.ll" -lo "$out_dir/$name-$strategy.ll" -o "$out_dir/$name-$strategy.smt2" > tmp.txt
+"$SLOT" -s "$benchmark" -pall "-unmerge-$strategy" "$SELECT_COUNT" -lu "$out_dir/$name.ll" -lo "$out_dir/$name-$strategy.ll" -o "$out_dir/$name-$strategy.smt2" > tmp.txt

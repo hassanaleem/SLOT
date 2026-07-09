@@ -44,7 +44,10 @@ run_solver_on_query() {
     start_ns=$(date +%s%N)
     local solver_cmd=("$solver_bin" "$query_file")
     if [ -n "$solver_timeout_seconds" ]; then
-        solver_cmd=(timeout "$solver_timeout_seconds" "${solver_cmd[@]}")
+        # --foreground keeps timeout and the solver in this script's process
+        # group; without it timeout moves both into a new group, where the
+        # harness's killpg can never reach them.
+        solver_cmd=(timeout --foreground "$solver_timeout_seconds" "${solver_cmd[@]}")
     fi
 
     if "${solver_cmd[@]}" >"$stdout_file" 2>"$stderr_file"; then

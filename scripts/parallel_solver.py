@@ -55,6 +55,8 @@ def start_worker(idx: int, query_file: Path, solver_script: Path) -> dict:
 
 
 def kill_worker(worker: dict) -> None:
+    # Group kill reaches the solver only because run-solver.sh uses
+    # `timeout --foreground`; plain timeout escapes into its own group.
     try:
         os.killpg(worker["proc"].pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -74,6 +76,7 @@ def run(smt2_file: Path, solver: str, max_workers: int = MAX_WORKERS) -> int:
     solver_script = SOLVERS_DIR / f"{solver}.sh"
     with tempfile.TemporaryDirectory() as _tmpdir:
         tmpdir = Path(_tmpdir)
+        global_start = time.perf_counter()
         print(f"Extracting queries from {smt2_file} …")
         queries = extract_queries(smt2_file, tmpdir)
         if not queries:
@@ -82,11 +85,12 @@ def run(smt2_file: Path, solver: str, max_workers: int = MAX_WORKERS) -> int:
 
         n = len(queries)
         width = len(str(n))
+        extract_seconds = time.perf_counter() - global_start
         print(f"  {n} queries, max {max_workers} workers, solver={solver}")
+        print(f"  extraction took {extract_seconds:.3f}s")
 
         pending: deque[tuple[int, Path]] = deque(enumerate(queries, start=1))
         active: dict[int, dict] = {}
-        global_start = time.perf_counter()
 
         def fill_slots() -> None:
             while pending and len(active) < max_workers:

@@ -1,24 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-usage() {
-    echo "Usage: $0 <file.smt2> [results-dir]" >&2
-    exit 1
-}
-[ "$#" -lt 1 ] || [ "$#" -gt 2 ] && usage
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
-input_file=$1
-[[ "$input_file" != *.smt2 ]] && input_file="${input_file}.smt2"
+[ "$#" -lt 1 ] || [ "$#" -gt 2 ] && { echo "Usage: $0 <file.smt2> [results-dir]" >&2; exit 1; }
+resolve_input "$1" "${2:-}"
 [ ! -f "$input_file" ] && { echo "File not found: $input_file" >&2; exit 1; }
 
-script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-slot="$script_dir/../src/slot"
-[ ! -x "$slot" ] && { echo "Missing executable: $slot" >&2; exit 1; }
-
-input_base=$(basename "$input_file" .smt2)
-results_root="${2:-$script_dir/../select-results-strategies}"
-out_dir="$results_root/$input_base"
-select_count=5
 mkdir -p "$out_dir"
 
 simple_ll="$out_dir/${input_base}.ll"
@@ -34,15 +22,11 @@ run_strategy() {
     local out_ll="$out_dir/${input_base}-${name}.ll"
     local out_smt2="$out_dir/${input_base}-${name}.smt2"
     local stats_tmp; stats_tmp=$(mktemp)
-    local start_ns end_ns elapsed_ms
-    start_ns=$(date +%s%N)
-    if ! "$slot" "$@" -lo "$out_ll" -o "$out_smt2" -t "$stats_tmp" > /dev/null 2>"$out_dir/${name}.err"; then
+    if ! run_timed "$SLOT" "$@" -lo "$out_ll" -o "$out_smt2" -t "$stats_tmp" > /dev/null 2>"$out_dir/${name}.err"; then
         echo "  $name failed; see $out_dir/${name}.err" >&2
         rm -f "$stats_tmp"
         exit 1
     fi
-    end_ns=$(date +%s%N)
-    elapsed_ms=$(((end_ns - start_ns) / 1000000))
     printf "strategy=%s elapsed_ms=%d\n" "$name" "$elapsed_ms" >> "$time_file"
     printf "%s,%s\n" "$name" "$(tail -n 1 "$stats_tmp")" >> "$pass_timing_file"
     rm -f "$stats_tmp"
@@ -51,35 +35,23 @@ run_strategy() {
 }
 
 # Phase 1: SMT -> simple LLVM IR
-start_ns=$(date +%s%N)
-timeout 300 "$slot" -s "$input_file" -lu "$simple_ll" -emit-ll-only > /dev/null
-end_ns=$(date +%s%N)
-smt_to_ll_ms=$(((end_ns - start_ns) / 1000000))
+run_timed timeout 300 "$SLOT" -s "$input_file" -lu "$simple_ll" -emit-ll-only > /dev/null
+smt_to_ll_ms=$elapsed_ms
 printf "smt_to_ll elapsed_ms=%d\n" "$smt_to_ll_ms" >> "$time_file"
 printf "smt_to_ll_ms=%d\n" "$smt_to_ll_ms" >&2
 
 num_selects=$(grep -c '= select ' "$simple_ll" || true)
-max_paths=$((1 << select_count))
+max_paths=$((1 << SELECT_COUNT))
 printf "num_selects=%d max_paths=%d\n" "$num_selects" "$max_paths" >> "$time_file"
 printf "num_selects=%d max_paths=%d\n" "$num_selects" "$max_paths" >&2
 
-# Phase 2: first / last / random / chain (n = select_count)
+# Phase 2: every unmerge strategy plus the opt baseline
 ll_to_opt_total_ms=0
-
-for strategy in first last random chain; do
-    elapsed=$(run_strategy "$strategy" -li "$simple_ll" -pall "-unmerge-${strategy}" "$select_count")
+for strategy in "${STRATEGIES[@]}"; do
+    strategy_flags "$strategy"
+    elapsed=$(run_strategy "$strategy" -li "$simple_ll" -pall "${slot_flags[@]}")
     ll_to_opt_total_ms=$((ll_to_opt_total_ms + elapsed))
 done
-
-# Phase 3: all with bfs and dfs (max-paths = 2^num_selects)
-for path_strategy in bfs dfs; do
-    elapsed=$(run_strategy "all-${path_strategy}" -li "$simple_ll" -pall -unmerge-all -max-paths "$max_paths" -path-strategy "$path_strategy")
-    ll_to_opt_total_ms=$((ll_to_opt_total_ms + elapsed))
-done
-
-# Phase 4: slot-optimized baseline — all passes, no select lowering
-elapsed=$(run_strategy "opt" -li "$simple_ll" -pall -nounmerge)
-ll_to_opt_total_ms=$((ll_to_opt_total_ms + elapsed))
 
 total_ms=$((smt_to_ll_ms + ll_to_opt_total_ms))
 printf "total elapsed_ms=%d\n" "$total_ms" >> "$time_file"
