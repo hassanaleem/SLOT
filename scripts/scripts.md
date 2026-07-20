@@ -4,7 +4,7 @@
 
 `run-variant.sh` Phase 3 calls the solver on the generated `.smt2` file:
 - All strategies except `opt` → `parallel_solver.py` (bounded-parallel, stops at first SAT)
-- `opt` → `solvers/z3.sh` directly (single query)
+- `opt` → `solvers/run-solver.sh` directly (single query)
 
 ---
 

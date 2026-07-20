@@ -18,7 +18,7 @@ from pathlib import Path
 
 MAX_WORKERS = 10
 
-SOLVERS_DIR = Path(__file__).resolve().parent.parent / "solvers"
+RUN_SOLVER = Path(__file__).resolve().parent.parent / "solvers" / "run-solver.sh"
 SUPPORTED_SOLVERS = ["z3", "cvc5", "mathsat", "opensmt"]
 
 
@@ -43,9 +43,9 @@ def extract_queries(smt2_file: Path, tmpdir: Path) -> list[Path]:
     return queries
 
 
-def start_worker(idx: int, query_file: Path, solver_script: Path) -> dict:
+def start_worker(idx: int, query_file: Path, solver: str) -> dict:
     proc = subprocess.Popen(
-        [str(solver_script), str(query_file)],
+        [str(RUN_SOLVER), solver, str(query_file)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -73,7 +73,6 @@ def parse_result(stdout: str, solver: str) -> str:
 
 
 def run(smt2_file: Path, solver: str, max_workers: int = MAX_WORKERS) -> int:
-    solver_script = SOLVERS_DIR / f"{solver}.sh"
     with tempfile.TemporaryDirectory() as _tmpdir:
         tmpdir = Path(_tmpdir)
         global_start = time.perf_counter()
@@ -95,7 +94,7 @@ def run(smt2_file: Path, solver: str, max_workers: int = MAX_WORKERS) -> int:
         def fill_slots() -> None:
             while pending and len(active) < max_workers:
                 idx, qfile = pending.popleft()
-                worker = start_worker(idx, qfile, solver_script)
+                worker = start_worker(idx, qfile, solver)
                 active[worker["proc"].pid] = worker
                 print(f"  [+] query {idx:>{width}}/{n}  pid={worker['proc'].pid}")
 
@@ -144,11 +143,6 @@ def main() -> None:
     smt2_path = Path(args.smt2_file)
     if not smt2_path.exists():
         print(f"Error: {smt2_path} not found", file=sys.stderr)
-        sys.exit(1)
-
-    solver_script = SOLVERS_DIR / f"{args.solver}.sh"
-    if not solver_script.exists():
-        print(f"Error: solver script not found: {solver_script}", file=sys.stderr)
         sys.exit(1)
 
     if args.workers < 1:

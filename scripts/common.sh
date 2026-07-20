@@ -9,8 +9,15 @@ DEFAULT_EXPERIMENTAL_DIR="${script_dir}/../reroll"
 SLOT="${script_dir}/../src/slot"
 SOLVERS_DIR="${script_dir}/../solvers"
 PARALLEL_SOLVER="${script_dir}/parallel_solver.py"
-STRATEGIES=(first last random chain all-bfs all-dfs opt)
+# STRATEGIES=(first last random chain all-bfs all-dfs opt)
+STRATEGIES=(chain opt)
+
 SELECT_COUNT=5
+# Solver binary to use (z3, cvc5, mathsat, opensmt); must be on PATH.
+SOLVER="${SOLVER:-z3}"
+# Per-query timeout, enforced by solvers/run-solver.sh (exported so it reaches
+# the solver wrappers, including through parallel_solver.py).
+export SLOT_SOLVER_TIMEOUT_SECONDS="${SLOT_SOLVER_TIMEOUT_SECONDS:-650}"
 WORKERS="${WORKERS:-16}"
 # Cooldown between solver runs; set to 0 to disable.
 COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-5}"
