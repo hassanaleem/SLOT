@@ -299,16 +299,16 @@ namespace SLOT
                     switch (RoundingMode())
                     {
                         case Z3_OP_FPA_RM_NEAREST_TIES_TO_EVEN:
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::roundeven, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::roundeven, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
                             break;
                         case Z3_OP_FPA_RM_NEAREST_TIES_TO_AWAY:
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::lround, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::lround, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
                             break;
                         case Z3_OP_FPA_RM_TOWARD_POSITIVE:         
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::ceil, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::ceil, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
                             break;
                         case Z3_OP_FPA_RM_TOWARD_NEGATIVE:
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::floor, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::floor, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
                             break;
                         case Z3_OP_FPA_RM_TOWARD_ZERO:
                             //Default behavior of llvm fptoui
@@ -325,16 +325,16 @@ namespace SLOT
                     switch (RoundingMode())
                     {
                         case Z3_OP_FPA_RM_NEAREST_TIES_TO_EVEN:
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::roundeven, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::roundeven, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
                             break;
                         case Z3_OP_FPA_RM_NEAREST_TIES_TO_AWAY:
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::lround, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::lround, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
                             break;
                         case Z3_OP_FPA_RM_TOWARD_POSITIVE:         
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::ceil, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::ceil, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
                             break;
                         case Z3_OP_FPA_RM_TOWARD_NEGATIVE:
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::floor, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::floor, FloatingNode::ToFloatingType(lcx, contents.to_string(), Width()));
                             break;
                         case Z3_OP_FPA_RM_TOWARD_ZERO:
                             //Default behavior of llvm fptosi
@@ -469,7 +469,7 @@ namespace SLOT
                     args.push_back(temp);
                     args.push_back(ConstantInt::get(ity, Z3_get_decl_int_parameter(c, contents.decl(),0)%Width()));
 
-                    fun = Intrinsic::getDeclaration(lmodule, Intrinsic::fshl, ity);
+                    fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::fshl, ity);
                     return builder.CreateCall(fun,args);
                 case Z3_OP_ROTATE_RIGHT:
                     assert(contents.num_args()==1);
@@ -481,7 +481,7 @@ namespace SLOT
                     args.push_back(temp);
                     args.push_back(ConstantInt::get(ity, Z3_get_decl_int_parameter(c, contents.decl(),0)%Width()));
 
-                    fun = Intrinsic::getDeclaration(lmodule, Intrinsic::fshr, ity);
+                    fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::fshr, ity);
                     return builder.CreateCall(fun,args);
                 default:
                     throw UnsupportedSMTOpException(X_BV_OP, contents);
@@ -529,7 +529,7 @@ namespace SLOT
         //Get constant int with the flags for the class check
         args.push_back(ConstantInt::get(IntegerType::get(lcx,32),class_flags.at(op)));
         //Get intrinsic function for class check
-        Function * fun = Intrinsic::getDeclaration(lmodule, Function::lookupIntrinsicID("llvm.is.fpclass"), val->getType());
+        Function * fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::lookupIntrinsicID("llvm.is.fpclass"), val->getType());
         return builder.CreateCall(fun,args);
     }
 
@@ -608,7 +608,7 @@ namespace SLOT
                         types.push_back(FloatingType());
                         types.push_back(IntegerType::get(lcx, Width()));
 
-                        fun = Intrinsic::getDeclaration(lmodule, Intrinsic::experimental_constrained_uitofp, types);
+                        fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::experimental_constrained_uitofp, types);
                         return builder.CreateCall(fun, args);
                     }
                 case Z3_OP_FPA_TO_FP:
@@ -634,7 +634,7 @@ namespace SLOT
                             types.push_back(FloatingType());
                             types.push_back(IntegerType::get(lcx, Width()));
                             
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::experimental_constrained_sitofp, types);
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::experimental_constrained_sitofp, types);
                             return builder.CreateCall(fun, args);
                         }
                     }
@@ -668,11 +668,11 @@ namespace SLOT
                             args.push_back(LLVMException());
                             if (Width() > FloatingChild(1).Width())
                             {
-                                fun = Intrinsic::getDeclaration(lmodule, Intrinsic::experimental_constrained_fpext, FloatingType());
+                                fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::experimental_constrained_fpext, FloatingType());
                             }
                             else
                             {
-                                fun = Intrinsic::getDeclaration(lmodule, Intrinsic::experimental_constrained_fptrunc, FloatingType());
+                                fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::experimental_constrained_fptrunc, FloatingType());
                             }
                             return builder.CreateCall(fun, args);
                         }
@@ -693,19 +693,19 @@ namespace SLOT
                     switch (RoundingMode())
                     {
                         case Z3_OP_FPA_RM_NEAREST_TIES_TO_EVEN:
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::roundeven, FloatingType());
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::roundeven, FloatingType());
                             break;
                         case Z3_OP_FPA_RM_NEAREST_TIES_TO_AWAY:
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::lround, FloatingType());
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::lround, FloatingType());
                             break;
                         case Z3_OP_FPA_RM_TOWARD_POSITIVE:         
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::ceil, FloatingType());
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::ceil, FloatingType());
                             break;
                         case Z3_OP_FPA_RM_TOWARD_NEGATIVE:
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::floor, FloatingType());
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::floor, FloatingType());
                             break;
                         case Z3_OP_FPA_RM_TOWARD_ZERO:
-                            fun = Intrinsic::getDeclaration(lmodule, Intrinsic::trunc, FloatingType());
+                            fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::trunc, FloatingType());
                             break;
                         default:
                             throw UnsupportedSMTOpException(X_RM_VAR, contents);
@@ -731,7 +731,7 @@ namespace SLOT
                     assert(contents.num_args()==1);
                     
                     args.push_back(FloatingChild(0).ToLLVM());
-                    fun = Intrinsic::getDeclaration(lmodule, Intrinsic::fabs, FloatingType());
+                    fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::fabs, FloatingType());
                     return builder.CreateCall(fun,args);
                 case Z3_OP_FPA_NEG:
                     assert(contents.num_args()==1);
@@ -748,7 +748,7 @@ namespace SLOT
                         args.push_back(FloatingChild(2).ToLLVM());
                         args.push_back(LLVMRoundingMode());
                         args.push_back(LLVMException());
-                        fun = Intrinsic::getDeclaration(lmodule, Intrinsic::experimental_constrained_fadd, FloatingType());
+                        fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::experimental_constrained_fadd, FloatingType());
                         return builder.CreateCall(fun, args);
                     }
                 case Z3_OP_FPA_SUB:
@@ -763,7 +763,7 @@ namespace SLOT
                         args.push_back(FloatingChild(2).ToLLVM());
                         args.push_back(LLVMRoundingMode());
                         args.push_back(LLVMException());
-                        fun = Intrinsic::getDeclaration(lmodule, Intrinsic::experimental_constrained_fsub, FloatingType());
+                        fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::experimental_constrained_fsub, FloatingType());
                         return builder.CreateCall(fun, args);
                     }
                 case Z3_OP_FPA_MUL:
@@ -778,7 +778,7 @@ namespace SLOT
                         args.push_back(FloatingChild(2).ToLLVM());
                         args.push_back(LLVMRoundingMode());
                         args.push_back(LLVMException());
-                        fun = Intrinsic::getDeclaration(lmodule, Intrinsic::experimental_constrained_fmul, FloatingType());
+                        fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::experimental_constrained_fmul, FloatingType());
                         return builder.CreateCall(fun, args);
                     }
                 case Z3_OP_FPA_DIV:
@@ -793,7 +793,7 @@ namespace SLOT
                         args.push_back(FloatingChild(2).ToLLVM());
                         args.push_back(LLVMRoundingMode());
                         args.push_back(LLVMException());
-                        fun = Intrinsic::getDeclaration(lmodule, Intrinsic::experimental_constrained_fdiv, FloatingType());
+                        fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::experimental_constrained_fdiv, FloatingType());
                         return builder.CreateCall(fun, args);
                     }
                 case Z3_OP_FPA_REM:
@@ -807,13 +807,13 @@ namespace SLOT
 
                     if (IsRNE())
                     {
-                        fun = Intrinsic::getDeclaration(lmodule, Intrinsic::fma, FloatingType());
+                        fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::fma, FloatingType());
                     }
                     else
                     {
                         args.push_back(LLVMRoundingMode());
                         args.push_back(LLVMException());
-                        fun = Intrinsic::getDeclaration(lmodule, Intrinsic::experimental_constrained_fma, FloatingType());
+                        fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::experimental_constrained_fma, FloatingType());
                     }
                     return builder.CreateCall(fun,args);
                 case Z3_OP_FPA_SQRT:
@@ -822,13 +822,13 @@ namespace SLOT
 
                     if (IsRNE())
                     {
-                        fun = Intrinsic::getDeclaration(lmodule, Intrinsic::sqrt, FloatingType());
+                        fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::sqrt, FloatingType());
                     }
                     else
                     {
                         args.push_back(LLVMRoundingMode());
                         args.push_back(LLVMException());
-                        fun = Intrinsic::getDeclaration(lmodule, Intrinsic::experimental_constrained_sqrt, FloatingType());
+                        fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::experimental_constrained_sqrt, FloatingType());
                     }
                     return builder.CreateCall(fun,args);
                 case Z3_OP_FPA_MIN:
@@ -836,14 +836,14 @@ namespace SLOT
                     args.push_back(FloatingChild(0).ToLLVM());
                     args.push_back(FloatingChild(1).ToLLVM());
 
-                    fun = Intrinsic::getDeclaration(lmodule, Intrinsic::minnum, FloatingType());
+                    fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::minnum, FloatingType());
                     return builder.CreateCall(fun,args);
                 case Z3_OP_FPA_MAX:
                     assert(contents.num_args()==2);
                     args.push_back(FloatingChild(0).ToLLVM());
                     args.push_back(FloatingChild(1).ToLLVM());
 
-                    fun = Intrinsic::getDeclaration(lmodule, Intrinsic::maxnum, FloatingType());
+                    fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::maxnum, FloatingType());
                     return builder.CreateCall(fun,args);
                 default:
                     throw UnsupportedSMTOpException(X_FP_OP, contents);

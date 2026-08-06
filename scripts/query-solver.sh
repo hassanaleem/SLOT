@@ -20,7 +20,8 @@ should_skip "$log_file" '^exit_code:' \
 if [ "$strategy" = opt ]; then
     solver_cmd=("$SOLVERS_DIR/run-solver.sh" "$SOLVER" "$out_smt2")
 else
-    solver_cmd=(python3 -u "$PARALLEL_SOLVER" --workers "$WORKERS" --solver "$SOLVER" "$out_smt2")
+    solver_cmd=(python3 -u "$PARALLEL_SOLVER" --workers "$WORKERS" --solver "$SOLVER" \
+        --timeout "$SLOT_SOLVER_TIMEOUT_SECONDS" "$out_smt2")
 fi
 
 printf "=== benchmark %s: %s ===\n" "$input_base" "$strategy" | tee "$log_file"

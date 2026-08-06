@@ -14,9 +14,9 @@ STRATEGIES=(chain opt)
 
 SELECT_COUNT=5
 # Solver binary to use (z3, cvc5, mathsat, opensmt); must be on PATH.
-SOLVER="${SOLVER:-z3}"
-# Per-query timeout, enforced by solvers/run-solver.sh (exported so it reaches
-# the solver wrappers, including through parallel_solver.py).
+SOLVER="${SOLVER:-cvc5}"
+# Wall-clock budget for one benchmark solve: parallel_solver.py enforces it
+# across the whole run, run-solver.sh per invocation (exported to reach both).
 export SLOT_SOLVER_TIMEOUT_SECONDS="${SLOT_SOLVER_TIMEOUT_SECONDS:-650}"
 WORKERS="${WORKERS:-16}"
 # Cooldown between solver runs; set to 0 to disable.

@@ -1,0 +1,4 @@
+/home/hassan/Desktop/SLOT/slot-benchmark-sat-with-select/QF_BV/spear/openldap_v2.3.35/servers_slapd_a_vc149789.smt2
+/home/hassan/Desktop/SLOT/slot-benchmark-sat-with-select/QF_BV/mcm/22.smt2
+/home/hassan/Desktop/SLOT/slot-benchmark-sat-with-select/QF_BV/fft/Sz512_15128_0.smt2
+/home/hassan/Desktop/SLOT/slot-benchmark-sat-with-select/QF_BV/spear/wget_v1.10.2/src_wget_vc18511.smt2

@@ -1,6 +1,7 @@
 CC= g++
 
-LLVM_BUILD_DIR := /home/hassan/Desktop/RoLAG/cgo22-rolag-artifact/loop-rolling/build/release
+# LLVM_BUILD_DIR := /home/hassan/Desktop/RoLAG/cgo22-rolag-artifact/loop-rolling/build/release
+LLVM_BUILD_DIR := /home/hassan/Desktop/LLVM/llvm-project-22.18/build
 LLVM_CONFIG ?= $(LLVM_BUILD_DIR)/bin/llvm-config
 
 CPPFLAGS= -I/usr/include -I$(shell $(LLVM_CONFIG) --includedir) -I$(LLVM_BUILD_DIR)/include -std=c++17 -fno-rtti -D_GNU_SOURCE -D_DEBUG -D_GLIBCXX_ASSERTIONS -D_LIBCPP_ENABLE_ASSERTIONS -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -g -O3 -fexceptions

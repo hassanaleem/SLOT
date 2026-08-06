@@ -41,7 +41,7 @@ def parse_solver_time(path, key):
         return None
     text = path.read_text()
     if key == "opt":
-        m = re.search(r"\bz3_time_seconds=([0-9]+(?:\.[0-9]+)?)", text)
+        m = re.search(r"(?:^|\s)[^\s=]+_time_seconds=([0-9]+(?:\.[0-9]+)?)\b", text)
     else:
         m = re.search(r"^Total time: ([0-9]+(?:\.[0-9]+)?)s$", text, re.MULTILINE)
     return float(m.group(1)) if m else None
@@ -65,9 +65,11 @@ def main():
               + [f"{t}_total_seconds"      for t in labels])
 
     rows = []
-    for timing_csv in sorted(timing_root.glob("*/logs/pass-timings.csv"), key=lambda p: p.parent.parent.name):
-        log_dir   = timing_csv.parent
-        benchmark = timing_csv.parent.parent.name
+    for bench_dir in sorted(timing_root.iterdir(), key=lambda p: p.name):
+        if not bench_dir.is_dir():
+            continue
+        log_dir   = bench_dir / "logs"
+        benchmark = bench_dir.name
         smt_data  = parse_smt_to_ll(log_dir / "smt-to-ll.txt")
         smt_t     = smt_data.get("elapsed_ms")
 

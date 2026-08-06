@@ -11,7 +11,9 @@ input_file=$2
 # Solvers may print warnings to stderr while still answering on stdout, so
 # keep the streams separate and only fall back to stderr for the result.
 stderr_file=$(mktemp)
-trap 'rm -f "$stderr_file"' EXIT HUP INT TERM
+trap 'rm -f "$stderr_file"' EXIT
+# Signals must exit (running the EXIT trap), not resume the script.
+trap 'exit 143' HUP INT TERM
 
 start_ns=$(date +%s%N)
 status=0

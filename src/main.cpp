@@ -17,7 +17,7 @@
 #include "llvm/Transforms/Scalar/InstSimplifyPass.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
-#include "llvm/Transforms/Scalar/LoopRolling.h"
+// #include "llvm/Transforms/Scalar/LoopRolling.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LCSSA.h"
 #include "llvm/Transforms/Scalar/IndVarSimplify.h"
@@ -499,7 +499,7 @@ unsigned short RunPasses(unsigned short flags, Function &fun, PassTimings &timin
   if (flags & GVN_FLAG)
   {
     auto passStart = high_resolution_clock::now();
-    llvm::GVN().run(fun, FAM);
+    llvm::GVNPass().run(fun, FAM);
     timings.gvn += high_resolution_clock::now() - passStart;
     if (fun.getEntryBlock().sizeWithoutDebug() != count)
     {
@@ -816,7 +816,7 @@ int main(int argc, char *argv[])
   }
   // else
   // {
-      // SINGLE QUERY WITH DISJUNCTION
+  //     // SINGLE QUERY WITH DISJUNCTION
   //   std::vector<expr> smtQueries = f.ToSMTQueries(pathStrategy, maxPaths);
   //   expr_vector paths(c);
   //   for (const expr &query : smtQueries)

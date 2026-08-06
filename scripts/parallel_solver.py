@@ -63,6 +63,22 @@ def kill_worker(worker: dict) -> None:
         pass
 
 
+def kill_all(workers: list[dict]) -> None:
+    for w in workers:
+        kill_worker(w)
+    for w in workers:
+        try:
+            w["proc"].wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        # The wait above only covers run-solver.sh itself; a solver that
+        # ignores TERM would survive it, so sweep the group with SIGKILL.
+        try:
+            os.killpg(w["proc"].pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
 def parse_result(stdout: str, solver: str) -> str:
     prefix = f"{solver}_result="
     for line in stdout.splitlines():
@@ -72,7 +88,12 @@ def parse_result(stdout: str, solver: str) -> str:
     return "unknown"
 
 
-def run(smt2_file: Path, solver: str, max_workers: int = MAX_WORKERS) -> int:
+def run(
+    smt2_file: Path,
+    solver: str,
+    max_workers: int = MAX_WORKERS,
+    timeout_seconds: float = 0.0,
+) -> int:
     with tempfile.TemporaryDirectory() as _tmpdir:
         tmpdir = Path(_tmpdir)
         global_start = time.perf_counter()
@@ -98,37 +119,44 @@ def run(smt2_file: Path, solver: str, max_workers: int = MAX_WORKERS) -> int:
                 active[worker["proc"].pid] = worker
                 print(f"  [+] query {idx:>{width}}/{n}  pid={worker['proc'].pid}")
 
-        fill_slots()
+        # Workers live in their own sessions, so a TERM or Ctrl-C aimed at us
+        # never reaches them — always tear them down ourselves on the way out.
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+        try:
+            fill_slots()
 
-        while active:
-            done = [pid for pid, w in active.items() if w["proc"].poll() is not None]
-            if not done:
-                continue
-
-            for pid in done:
-                worker = active.pop(pid)
-                stdout, _ = worker["proc"].communicate()
-                result = parse_result(stdout, solver)
+            while active:
                 elapsed = time.perf_counter() - global_start
-                print(f"  [-] query {worker['index']:>{width}}/{n}  result={result:<7}  elapsed={elapsed:.3f}s")
+                if timeout_seconds and elapsed > timeout_seconds:
+                    print(f"\nTimeout after {elapsed:.1f}s — killing {len(active)} running queries.")
+                    print(f"Total time: {timeout_seconds:.6f}s")
+                    return 1
 
-                if result == "sat":
-                    print(f"\nSAT — query {worker['index']} ({worker['file'].name})")
-                    print(f"Total time: {elapsed:.6f}s")
-                    for w in active.values():
-                        kill_worker(w)
-                        try:
-                            w["proc"].wait(timeout=5)
-                        except subprocess.TimeoutExpired:
-                            os.killpg(w["proc"].pid, signal.SIGKILL)
-                    return 0
+                done = [pid for pid, w in active.items() if w["proc"].poll() is not None]
+                if not done:
+                    time.sleep(0.05)
+                    continue
 
-                fill_slots()
+                for pid in done:
+                    worker = active.pop(pid)
+                    stdout, _ = worker["proc"].communicate()
+                    result = parse_result(stdout, solver)
+                    elapsed = time.perf_counter() - global_start
+                    print(f"  [-] query {worker['index']:>{width}}/{n}  result={result:<7}  elapsed={elapsed:.3f}s")
 
-        elapsed = time.perf_counter() - global_start
-        print(f"\nNo satisfying query found among {n} queries.")
-        print(f"Total time: {elapsed:.6f}s")
-        return 1
+                    if result == "sat":
+                        print(f"\nSAT — query {worker['index']} ({worker['file'].name})")
+                        print(f"Total time: {elapsed:.6f}s")
+                        return 0
+
+                    fill_slots()
+
+            elapsed = time.perf_counter() - global_start
+            print(f"\nNo satisfying query found among {n} queries.")
+            print(f"Total time: {elapsed:.6f}s")
+            return 1
+        finally:
+            kill_all(list(active.values()))
 
 
 def main() -> None:
@@ -138,6 +166,10 @@ def main() -> None:
     parser.add_argument("smt2_file", metavar="FILE.smt2")
     parser.add_argument("--solver", choices=SUPPORTED_SOLVERS, default="z3")
     parser.add_argument("--workers", type=int, default=MAX_WORKERS, metavar="N")
+    parser.add_argument(
+        "--timeout", type=float, default=0.0, metavar="SECONDS",
+        help="wall-clock budget for the whole run; 0 = no limit",
+    )
     args = parser.parse_args()
 
     smt2_path = Path(args.smt2_file)
@@ -149,7 +181,8 @@ def main() -> None:
         print("Error: --workers must be >= 1", file=sys.stderr)
         sys.exit(1)
 
-    sys.exit(run(smt2_path, solver=args.solver, max_workers=args.workers))
+    sys.exit(run(smt2_path, solver=args.solver, max_workers=args.workers,
+                 timeout_seconds=args.timeout))
 
 
 if __name__ == "__main__":
