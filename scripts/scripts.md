@@ -69,6 +69,16 @@ scripts/runall.sh
 
 ---
 
+### `run-all-unsat.sh`
+Runs the benchmarks in `torun-unsat.txt` with the UNSAT configuration and writes a separate, status-aware breakdown CSV after the sweep completes.
+
+```bash
+scripts/run-all-unsat.sh
+scripts/run-all-unsat.sh /custom/results/dir /custom/time_breakdown_unsat.csv
+```
+
+---
+
 ## Solving
 
 ### `parallel_solver.py`
@@ -92,6 +102,24 @@ Writes to: `scripts/time_breakdown.csv`
 ```bash
 python3 scripts/make_time_breakdown_csv.py
 python3 scripts/make_time_breakdown_csv.py /custom/results/dir /custom/output.csv
+```
+
+---
+
+### `make_unsat_time_breakdown_csv.py`
+Collects only the benchmarks listed in `torun-unsat.txt` and writes `scripts/time_breakdown_unsat.csv`. It records solver/result status, excludes stale non-manifest runs, suppresses stale strategy artifacts for zero-select inputs, and leaves numeric solver/total fields blank for parse errors or other invalid outcomes.
+
+```bash
+python3 scripts/make_unsat_time_breakdown_csv.py
+python3 scripts/make_unsat_time_breakdown_csv.py /custom/results/dir /custom/time_breakdown_unsat.csv
+```
+
+### `graphs/plot_unsat.py`
+Reads the separate UNSAT CSV and writes paired scatter and cactus PDFs under `graphs/unsat/`. Only select-eligible benchmarks are included; SAT graph files are not read or overwritten.
+
+```bash
+python3 graphs/plot_unsat.py
+python3 graphs/plot_unsat.py /custom/time_breakdown_unsat.csv /custom/graph-dir
 ```
 
 ---

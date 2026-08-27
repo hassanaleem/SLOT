@@ -10,11 +10,11 @@ SLOT="${script_dir}/../src/slot"
 SOLVERS_DIR="${script_dir}/../solvers"
 PARALLEL_SOLVER="${script_dir}/parallel_solver.py"
 # STRATEGIES=(first last random chain all-bfs all-dfs opt)
-STRATEGIES=(chain opt)
+STRATEGIES=(chain opt first last random)
 
 SELECT_COUNT=5
 # Solver binary to use (z3, cvc5, mathsat, opensmt); must be on PATH.
-SOLVER="${SOLVER:-cvc5}"
+SOLVER="${SOLVER:-z3}"
 # Wall-clock budget for one benchmark solve: parallel_solver.py enforces it
 # across the whole run, run-solver.sh per invocation (exported to reach both).
 export SLOT_SOLVER_TIMEOUT_SECONDS="${SLOT_SOLVER_TIMEOUT_SECONDS:-650}"
@@ -37,6 +37,9 @@ strategy_flags() {
         opt)                     slot_flags=(-nounmerge) ;;
         *)                       echo "Unknown strategy: $1" >&2; return 1 ;;
     esac
+    if [ "${SLOT_DISJUNCTION:-0}" = 1 ]; then
+        slot_flags+=(-disjunction)
+    fi
 }
 
 # run_timed <cmd...> — runs the command, sets elapsed_ms, returns the command's status
@@ -69,10 +72,16 @@ resolve_input() {
 # For each benchmark in BENCHMARK_LIST, calls: <cmd> [args...] <benchmark_path> <results_dir>
 foreach_benchmark() {
     local results_dir=$1; shift
+    local benchmark_path
     [ ! -f "$BENCHMARK_LIST" ] && { echo "Benchmark list not found: $BENCHMARK_LIST" >&2; return 1; }
     while IFS= read -r bm || [ -n "$bm" ]; do
         [ -z "$bm" ] && continue
         [[ "$bm" == \#* ]] && continue
-        "$@" "$BENCHMARK_DIR/$bm" "$results_dir"
+        if [ "${ALLOW_ABSOLUTE_BENCHMARKS:-0}" = 1 ] && [[ "$bm" == /* ]]; then
+            benchmark_path=$bm
+        else
+            benchmark_path="$BENCHMARK_DIR/$bm"
+        fi
+        "$@" "$benchmark_path" "$results_dir"
     done < "$BENCHMARK_LIST"
 }

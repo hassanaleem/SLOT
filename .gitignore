@@ -7,3 +7,14 @@ QF_BV
 slow-benchmarks
 qf_bv*
 select-results-*
+__pycache__
+reroll
+AGENTS.md
+motivating-example
+unsat-benchmarks
+unsat
+unknown
+*.pdf
+*.png
+*.csv
+*.xlsx
