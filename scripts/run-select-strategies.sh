@@ -40,11 +40,6 @@ smt_to_ll_ms=$elapsed_ms
 printf "smt_to_ll elapsed_ms=%d\n" "$smt_to_ll_ms" >> "$time_file"
 printf "smt_to_ll_ms=%d\n" "$smt_to_ll_ms" >&2
 
-num_selects=$(grep -c '= select ' "$simple_ll" || true)
-max_paths=$((1 << SELECT_COUNT))
-printf "num_selects=%d max_paths=%d\n" "$num_selects" "$max_paths" >> "$time_file"
-printf "num_selects=%d max_paths=%d\n" "$num_selects" "$max_paths" >&2
-
 # Phase 2: every unmerge strategy plus the opt baseline
 ll_to_opt_total_ms=0
 for strategy in "${STRATEGIES[@]}"; do

@@ -9,9 +9,11 @@ Reads:
 
 Writes PDFs into this directory, one per comparison (see COMPARISONS below):
   z3_slot_vs_chain_{solver,total}.pdf
+  z3_chain_vs_chained_single_query_{solver,total}.pdf
   z3_chain_vs_z3baseline_{solver,total}.pdf
   z3_chain_vs_z3flag_{solver,total}.pdf
   cvc5_slot_vs_chain_{solver,total}.pdf
+  cvc5_chain_vs_chained_single_query_{solver,total}.pdf
   cvc5_chain_vs_cvc5baseline_{solver,total}.pdf
   cvc5_chain_vs_cvc5ite_{solver,total}.pdf
   cvc5_chain_vs_cvc5iteheur_{solver,total}.pdf
@@ -281,87 +283,54 @@ def plot_metric(xs, ys, statuses, y_label, x_label, filename):
           f"both-timeout={len(both_timeout_idx)}, unknown={len(unknown_pts)})")
 
 
+# same-source comparisons: (y_method, x_method, y_label, x_label, name)
+# both sides come from the same breakdown CSV (generated+solved with one solver)
+SAME_SOURCE = [
+    ("slot", "chain", "Slot", "ThunderFork", "slot_vs_chain"),
+    ("chain", "chained_single_query", "ThunderFork-Parallel", "ThunderFork-Single-Query",
+     "chain_vs_chained_single_query"),
+]
+
+# cross-source comparisons per solver: chain vs a variant solved directly on
+# the .smt2 (time_col, status_col, x_label, tag)
+CROSS_SOURCE = {
+    "z3": [
+        ("time-z3", "result-z3", "Z3 baseline", "z3baseline"),
+        ("time-simplify-split-clause", "result-simplify-split-clause",
+         "Z3 + simplify-split-clause", "z3flag"),
+    ],
+    "cvc5": [
+        ("time-cvc5", "result-cvc5", "CVC5 baseline", "cvc5baseline"),
+        ("time-cvc5-ite", "result-cvc5-ite", "CVC5 + ite", "cvc5ite"),
+        ("time-cvc5-ite-heuristics", "result-cvc5-ite-heuristics",
+         "CVC5 + ite-heuristics", "cvc5iteheur"),
+    ],
+}
+
+METRICS = [("solver_time", "solver"), ("total_seconds", "total")]
+
+
 def build_comparisons():
-    z3_idx = load_breakdown_index(Z3_BREAKDOWN_CSV)
-    cvc5_idx = load_breakdown_index(CVC5_BREAKDOWN_CSV)
-    z3_variants_idx = load_variants_index(Z3_VARIANTS_CSV)
-    cvc5_variants_idx = load_variants_index(CVC5_VARIANTS_CSV)
+    solvers = [
+        ("z3", load_breakdown_index(Z3_BREAKDOWN_CSV), load_variants_index(Z3_VARIANTS_CSV)),
+        ("cvc5", load_breakdown_index(CVC5_BREAKDOWN_CSV), load_variants_index(CVC5_VARIANTS_CSV)),
+    ]
 
     comparisons = []
+    for solver_name, idx, variants_idx in solvers:
+        for metric_suffix, metric_tag in METRICS:
+            for y_method, x_method, y_label, x_label, name in SAME_SOURCE:
+                xs, ys, statuses = paired_same_source(
+                    idx, f"{y_method}_{metric_suffix}", f"{x_method}_{metric_suffix}")
+                comparisons.append((xs, ys, statuses, y_label, x_label,
+                                     f"{solver_name}_{name}_{metric_tag}.pdf"))
 
-    def same(idx, y_col, x_col, y_label, x_label, filename):
-        xs, ys, statuses = paired_same_source(idx, y_col, x_col)
-        comparisons.append((xs, ys, statuses, y_label, x_label, filename))
-
-    def cross(idx_y, y_col, idx_x, x_col, status_col, y_label, x_label, filename):
-        xs, ys, statuses = paired_cross_source(idx_y, y_col, idx_x, x_col, status_col)
-        comparisons.append((xs, ys, statuses, y_label, x_label, filename))
-
-    # --- Z3: slot vs chain (same pipeline, both generated+solved with z3) ---
-    # Former graph title: Preprocessing-Technique Comparison Using Z3 — Slot vs ThunderFork · Solver time
-    same(z3_idx, "slot_solver_time", "chain_solver_time", "Slot", "ThunderFork",
-         "z3_slot_vs_chain_solver.pdf")
-    # Former graph title: Preprocessing-Technique Comparison Using Z3 — Slot vs ThunderFork · Total time
-    same(z3_idx, "slot_total_seconds", "chain_total_seconds", "Slot", "ThunderFork",
-         "z3_slot_vs_chain_total.pdf")
-
-    # --- Z3: chain vs z3 baseline (solve the .smt2 directly with plain z3) ---
-    # Former graph title: ThunderFork Preprocessing vs Native Z3 Configurations — Solver time · Baseline
-    cross(z3_idx, "chain_solver_time", z3_variants_idx, "time-z3", "result-z3",
-          "ThunderFork (solver)", "Z3 baseline",
-          "z3_chain_vs_z3baseline_solver.pdf")
-    # Former graph title: ThunderFork Preprocessing vs Native Z3 Configurations — Total time · Baseline
-    cross(z3_idx, "chain_total_seconds", z3_variants_idx, "time-z3", "result-z3",
-          "ThunderFork (total)", "Z3 baseline",
-          "z3_chain_vs_z3baseline_total.pdf")
-
-    # --- Z3: chain vs z3 + simplify-split-clause flag ---
-    # Former graph title: ThunderFork Preprocessing vs Native Z3 Configurations — Solver time · simplify-split-clause
-    cross(z3_idx, "chain_solver_time", z3_variants_idx, "time-simplify-split-clause", "result-simplify-split-clause",
-          "ThunderFork (solver)", "Z3 + simplify-split-clause",
-          "z3_chain_vs_z3flag_solver.pdf")
-    # Former graph title: ThunderFork Preprocessing vs Native Z3 Configurations — Total time · simplify-split-clause
-    cross(z3_idx, "chain_total_seconds", z3_variants_idx, "time-simplify-split-clause", "result-simplify-split-clause",
-          "ThunderFork (total)", "Z3 + simplify-split-clause",
-          "z3_chain_vs_z3flag_total.pdf")
-
-    # --- CVC5: slot vs chain (same pipeline, both generated+solved with cvc5) ---
-    # Former graph title: Preprocessing-Technique Comparison Using CVC5 — Slot vs ThunderFork · Solver time
-    same(cvc5_idx, "slot_solver_time", "chain_solver_time", "Slot", "ThunderFork",
-         "cvc5_slot_vs_chain_solver.pdf")
-    # Former graph title: Preprocessing-Technique Comparison Using CVC5 — Slot vs ThunderFork · Total time
-    same(cvc5_idx, "slot_total_seconds", "chain_total_seconds", "Slot", "ThunderFork",
-         "cvc5_slot_vs_chain_total.pdf")
-
-    # --- CVC5: chain vs cvc5 baseline (solve the .smt2 directly with plain cvc5) ---
-    # Former graph title: ThunderFork Preprocessing vs Native CVC5 Configurations — Solver time · Baseline
-    cross(cvc5_idx, "chain_solver_time", cvc5_variants_idx, "time-cvc5", "result-cvc5",
-          "ThunderFork (solver)", "CVC5 baseline",
-          "cvc5_chain_vs_cvc5baseline_solver.pdf")
-    # Former graph title: ThunderFork Preprocessing vs Native CVC5 Configurations — Total time · Baseline
-    cross(cvc5_idx, "chain_total_seconds", cvc5_variants_idx, "time-cvc5", "result-cvc5",
-          "ThunderFork (total)", "CVC5 baseline",
-          "cvc5_chain_vs_cvc5baseline_total.pdf")
-
-    # --- CVC5: chain vs cvc5 + ite flag ---
-    # Former graph title: ThunderFork Preprocessing vs Native CVC5 Configurations — Solver time · ite
-    cross(cvc5_idx, "chain_solver_time", cvc5_variants_idx, "time-cvc5-ite", "result-cvc5-ite",
-          "ThunderFork (solver)", "CVC5 + ite",
-          "cvc5_chain_vs_cvc5ite_solver.pdf")
-    # Former graph title: ThunderFork Preprocessing vs Native CVC5 Configurations — Total time · ite
-    cross(cvc5_idx, "chain_total_seconds", cvc5_variants_idx, "time-cvc5-ite", "result-cvc5-ite",
-          "ThunderFork (total)", "CVC5 + ite",
-          "cvc5_chain_vs_cvc5ite_total.pdf")
-
-    # --- CVC5: chain vs cvc5 + ite-heuristics flag ---
-    # Former graph title: ThunderFork Preprocessing vs Native CVC5 Configurations — Solver time · ite-heuristics
-    cross(cvc5_idx, "chain_solver_time", cvc5_variants_idx, "time-cvc5-ite-heuristics", "result-cvc5-ite-heuristics",
-          "ThunderFork (solver)", "CVC5 + ite-heuristics",
-          "cvc5_chain_vs_cvc5iteheur_solver.pdf")
-    # Former graph title: ThunderFork Preprocessing vs Native CVC5 Configurations — Total time · ite-heuristics
-    cross(cvc5_idx, "chain_total_seconds", cvc5_variants_idx, "time-cvc5-ite-heuristics", "result-cvc5-ite-heuristics",
-          "ThunderFork (total)", "CVC5 + ite-heuristics",
-          "cvc5_chain_vs_cvc5iteheur_total.pdf")
+            y_col = f"chain_{metric_suffix}"
+            y_label = f"ThunderFork ({metric_tag})"
+            for time_col, status_col, x_label, tag in CROSS_SOURCE[solver_name]:
+                xs, ys, statuses = paired_cross_source(idx, y_col, variants_idx, time_col, status_col)
+                comparisons.append((xs, ys, statuses, y_label, x_label,
+                                     f"{solver_name}_chain_vs_{tag}_{metric_tag}.pdf"))
 
     return comparisons
 

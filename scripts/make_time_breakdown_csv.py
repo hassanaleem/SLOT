@@ -6,14 +6,17 @@ from pathlib import Path
 
 # (type_label, file_key) — file_key is used in log filenames
 TYPES = [
-    ("slot",    "opt"),
-    ("chain",   "chain"),
-    ("first",   "first"),
-    ("last",    "last"),
-    ("random",  "random"),
-    ("all-bfs", "all-bfs"),
-    ("all-dfs", "all-dfs"),
+    ("slot",                 "opt"),
+    ("chain",                "chain"),
+    ("chained_single_query", "chained-single-query"),
+    ("first",                 "first"),
+    ("last",                  "last"),
+    ("random",                "random"),
+    ("all-bfs",               "all-bfs"),
+    ("all-dfs",               "all-dfs"),
 ]
+
+
 def parse_smt_to_ll(path):
     data = {}
     if not path.exists():

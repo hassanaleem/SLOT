@@ -7,7 +7,11 @@ import re
 from collections import Counter
 from pathlib import Path
 
-METHODS = (("slot", "opt"), ("chain", "chain"))
+METHODS = (
+    ("slot", "opt"),
+    ("chain", "chain"),
+    ("chained_single_query", "chained-single-query"),
+)
 EXPECTED_RESULT = "unsat"
 FLOAT_RE = r"[0-9]+(?:\.[0-9]+)?"
 
@@ -27,8 +31,6 @@ def parse_phase1(path):
             data["input"] = line.removeprefix("input=")
         elif match := re.match(r"^elapsed_ms=(\d+)$", line):
             data["elapsed_seconds"] = int(match.group(1)) / 1000
-        elif match := re.match(r"^num_selects=(\d+)$", line):
-            data["num_selects"] = int(match.group(1))
     return data
 
 
@@ -184,7 +186,7 @@ def main():
 
     labels = [label for label, _ in METHODS]
     header = (
-        ["benchmark", "input", "num_selects", "smt_to_ll_seconds"]
+        ["benchmark", "input", "smt_to_ll_seconds"]
         + [f"{label}_generation_seconds" for label in labels]
         + [f"{label}_solver" for label in labels]
         + [f"{label}_result" for label in labels]
@@ -195,41 +197,27 @@ def main():
     rows = []
     observed_solvers = set()
     status_counts = {label: Counter() for label in labels}
-    eligible_count = 0
 
     for benchmark, manifest_input in load_manifest(args.benchmark_list):
         log_dir = args.timing_root / benchmark / "logs"
         phase1 = parse_phase1(log_dir / "smt-to-ll.txt")
         smt_time = phase1.get("elapsed_seconds")
-        num_selects = phase1.get("num_selects")
-        eligible = num_selects is not None and num_selects > 0
-        if eligible:
-            eligible_count += 1
 
         row = {
             "benchmark": benchmark,
             "input": phase1.get("input", manifest_input),
-            "num_selects": "" if num_selects is None else num_selects,
             "smt_to_ll_seconds": fmt(smt_time),
         }
 
         for label, key in METHODS:
-            generation_time = None
-            solver_run = {"time": None, "result": "", "solver": ""}
-            if eligible:
-                generation_time = parse_generation_time(
-                    log_dir / f"time-{key}.txt"
-                )
-                solver_run = parse_solver_log(
-                    log_dir / f"solver-{key}.log", key
-                )
+            generation_time = parse_generation_time(log_dir / f"time-{key}.txt")
+            solver_run = parse_solver_log(log_dir / f"solver-{key}.log", key)
 
             result = solver_run["result"]
             solver = solver_run["solver"]
             if solver:
                 observed_solvers.add(solver)
-            if eligible:
-                status_counts[label][result or "missing"] += 1
+            status_counts[label][result or "missing"] += 1
 
             solver_time = solver_run["time"]
             if result not in {EXPECTED_RESULT, "timeout"}:
@@ -263,7 +251,7 @@ def main():
     solver_summary = next(iter(observed_solvers), "none")
     print(
         f"wrote {len(rows)} manifest rows to {args.out_path} "
-        f"(select-eligible={eligible_count}, solver={solver_summary})"
+        f"(solver={solver_summary})"
     )
     for label in labels:
         summary = ", ".join(

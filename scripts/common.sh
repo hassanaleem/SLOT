@@ -10,7 +10,9 @@ SLOT="${script_dir}/../src/slot"
 SOLVERS_DIR="${script_dir}/../solvers"
 PARALLEL_SOLVER="${script_dir}/parallel_solver.py"
 # STRATEGIES=(first last random chain all-bfs all-dfs opt)
-STRATEGIES=(chain opt first last random)
+STRATEGIES=(chain chained-single-query)
+
+STRATEGIES_UNSAT=(chain opt chained-single-query)
 
 SELECT_COUNT=5
 # Solver binary to use (z3, cvc5, mathsat, opensmt); must be on PATH.
@@ -30,16 +32,19 @@ if [ ! -x "$SLOT" ]; then
 fi
 
 # strategy_flags <strategy> — sets slot_flags with the slot arguments for the strategy
+# Both chain strategies use SLOT's -unmerge-chain lowering. The
+# chained-single-query variant combines the resulting path queries into one
+# disjunction instead of emitting one independently solvable query per path.
 strategy_flags() {
-    case "$1" in
-        first|last|random|chain) slot_flags=("-unmerge-$1" "$SELECT_COUNT") ;;
-        all-bfs|all-dfs)         slot_flags=(-unmerge-all -max-paths "$((1 << SELECT_COUNT))" -path-strategy "${1#all-}") ;;
+    local strategy=$1
+    case "$strategy" in
+        first|last|random)       slot_flags=("-unmerge-$strategy" "$SELECT_COUNT") ;;
+        chain)                   slot_flags=(-unmerge-chain "$SELECT_COUNT") ;;
+        chained-single-query)    slot_flags=(-unmerge-chain "$SELECT_COUNT" -disjunction-single-query) ;;
+        all-bfs|all-dfs)         slot_flags=(-unmerge-all -max-paths "$((1 << SELECT_COUNT))" -path-strategy "${strategy#all-}") ;;
         opt)                     slot_flags=(-nounmerge) ;;
-        *)                       echo "Unknown strategy: $1" >&2; return 1 ;;
+        *)                       echo "Unknown strategy: $strategy" >&2; return 1 ;;
     esac
-    if [ "${SLOT_DISJUNCTION:-0}" = 1 ]; then
-        slot_flags+=(-disjunction)
-    fi
 }
 
 # run_timed <cmd...> — runs the command, sets elapsed_ms, returns the command's status

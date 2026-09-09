@@ -15,7 +15,6 @@ simple_ll="$out_dir/${input_base}.ll"
 should_skip "$simple_ll" && { echo "phase1 $input_base: skipped (already done)" >&2; exit 0; }
 
 run_timed timeout 300 "$SLOT" -s "$input_file" -lu "$simple_ll" -emit-ll-only > /dev/null
-num_selects=$(grep -c '= select ' "$simple_ll" || true)
-printf "input=%s\nelapsed_ms=%d\nnum_selects=%d\n" "$input_file" "$elapsed_ms" "$num_selects" \
+printf "input=%s\nelapsed_ms=%d\n" "$input_file" "$elapsed_ms" \
     > "$out_dir/logs/smt-to-ll.txt"
-printf "phase1 %s: elapsed_ms=%d num_selects=%d\n" "$input_base" "$elapsed_ms" "$num_selects" >&2
+printf "phase1 %s: elapsed_ms=%d\n" "$input_base" "$elapsed_ms" >&2

@@ -7,13 +7,15 @@ budget, so this is the clearest way to compare timeout behavior across methods.
 Reads the same sources as plot_paired_scatter.py (and reuses its benchmark
 normalization/index helpers, so "N attempted" always means the same set of
 benchmarks across every line drawn together on one plot):
-  - ../scripts/time_breakdown_z3.csv / time_breakdown_cvc5.csv (7 unmerging
-    methods: slot, chain, first, last, random, all-bfs, all-dfs)
+  - ../scripts/time_breakdown_z3.csv / time_breakdown_cvc5.csv (chain,
+    chained-single-query methods)
   - ../z3-variants.csv / ../cvc5-variants.csv (baseline + flag variants)
 
 Writes into this directory:
-  z3_cactus_methods_{solver,total}.pdf    - the 7 unmerging methods, z3-solved
-  cvc5_cactus_methods_{solver,total}.pdf  - the 7 unmerging methods, cvc5-solved
+  z3_cactus_chain_vs_chained_single_query_{solver,total}.pdf
+  cvc5_cactus_chain_vs_chained_single_query_{solver,total}.pdf
+                                           - ThunderFork-Parallel (chain) vs
+                                             ThunderFork-Single-Query (chained_single_query)
   z3_cactus_baseline_{solver,total}.pdf   - chain vs z3 baseline vs z3+flag
   cvc5_cactus_baseline_{solver,total}.pdf - chain vs cvc5 baseline vs cvc5+ite(-heuristics)
 """
@@ -27,13 +29,13 @@ import matplotlib.ticker as mticker
 
 from plot_paired_scatter import (
     Z3_BREAKDOWN_CSV, CVC5_BREAKDOWN_CSV, Z3_VARIANTS_CSV, CVC5_VARIANTS_CSV,
-    load_breakdown_index, load_variants_index, SOLVED_RESULTS,
+    TIMEOUT_SECONDS, SOLVED_RESULTS,
+    load_breakdown_index, load_variants_index, parse_time,
 )
 
 GRAPHS_DIR = Path(__file__).parent
-TIMEOUT_SECONDS = 650.0
 
-# dataviz skill: validated 8-slot categorical order, fixed assignment (never cycled)
+# dataviz skill: validated categorical order, fixed assignment (never cycled)
 SURFACE = "#ffffff"
 INK_SECONDARY = "#52514e"
 INK_MUTED = "#898781"
@@ -44,14 +46,6 @@ BLUE = "#2a78d6"
 ORANGE = "#eb6834"
 AQUA = "#1baf7a"
 YELLOW = "#eda100"
-MAGENTA = "#e87ba4"
-GREEN = "#008300"
-VIOLET = "#4a3aa7"
-
-
-def parse_time(row, col):
-    value = (row.get(col) or "").strip()
-    return float(value) if value else None
 
 
 def breakdown_timed_out(row, method):
@@ -145,50 +139,26 @@ def build_and_plot():
     z3_variants_idx = load_variants_index(Z3_VARIANTS_CSV)
     cvc5_variants_idx = load_variants_index(CVC5_VARIANTS_CSV)
 
-    method_colors = [
-        ("slot", "slot", BLUE), ("chain", "ThunderFork", ORANGE),
-        ("first", "first", AQUA), ("last", "last", YELLOW),
-        ("random", "random", MAGENTA), ("all-bfs", "all-bfs", GREEN),
-        ("all-dfs", "all-dfs", VIOLET),
-    ]
-
-    # --- unmerging-method comparisons: all methods share the same breakdown CSV,
-    # so "attempted" is just that CSV's own benchmark count. ---
-    # Former graph title for z3_cactus_methods_solver.pdf:
-    # Preprocessing-Technique Comparison Using Z3 — Solver time
-    # Former graph title for z3_cactus_methods_total.pdf:
-    # Preprocessing-Technique Comparison Using Z3 — Total time
-    # Former graph title for cvc5_cactus_methods_solver.pdf:
-    # Preprocessing-Technique Comparison Using CVC5 — Solver time
-    # Former graph title for cvc5_cactus_methods_total.pdf:
-    # Preprocessing-Technique Comparison Using CVC5 — Total time
-    for metric_suffix, metric_tag in [
-        ("solver_time", "solver"), ("total_seconds", "total"),
-    ]:
-        for solver_name, idx in [("z3", z3_idx), ("cvc5", cvc5_idx)]:
-            series = [(label, color, method_series(idx, method, metric_suffix))
-                      for method, label, color in method_colors]
-            plot_cactus(
-                series, len(idx),
-                f"{solver_name}_cactus_methods_{metric_tag}.pdf",
-            )
-
     # --- chain vs baseline solvers: restrict to benchmarks common to the
     # breakdown CSV and the variants CSV, so every line shares one denominator. ---
     z3_common = sorted(z3_idx.keys() & z3_variants_idx.keys())
     cvc5_common = sorted(cvc5_idx.keys() & cvc5_variants_idx.keys())
 
-    # Former graph title for z3_cactus_baseline_solver.pdf:
-    # ThunderFork Preprocessing vs Native Z3 Configurations — Solver time
-    # Former graph title for z3_cactus_baseline_total.pdf:
-    # ThunderFork Preprocessing vs Native Z3 Configurations — Total time
-    # Former graph title for cvc5_cactus_baseline_solver.pdf:
-    # ThunderFork Preprocessing vs Native CVC5 Configurations — Solver time
-    # Former graph title for cvc5_cactus_baseline_total.pdf:
-    # ThunderFork Preprocessing vs Native CVC5 Configurations — Total time
     for metric_suffix, metric_tag in [
         ("solver_time", "solver"), ("total_seconds", "total"),
     ]:
+        # --- ThunderFork chain vs chained-single-query: both drawn from the
+        # same breakdown CSV, so "attempted" is that CSV's own benchmark count. ---
+        for solver_name, idx in [("z3", z3_idx), ("cvc5", cvc5_idx)]:
+            series = [
+                ("ThunderFork-Parallel", ORANGE, method_series(idx, "chain", metric_suffix)),
+                ("ThunderFork-Single-Query", AQUA, method_series(idx, "chained_single_query", metric_suffix)),
+            ]
+            plot_cactus(
+                series, len(idx),
+                f"{solver_name}_cactus_chain_vs_chained_single_query_{metric_tag}.pdf",
+            )
+
         z3_series = [
             ("ThunderFork", ORANGE, breakdown_series_common(z3_idx, "chain", metric_suffix, z3_common)),
             ("z3 baseline", BLUE, variant_series_common(z3_variants_idx, "time-z3", "result-z3", z3_common)),

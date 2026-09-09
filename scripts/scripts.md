@@ -13,7 +13,13 @@
 ### `run-variant.sh`
 Runs one strategy end-to-end for one benchmark: generates LLVM IR and SMT2, then solves.
 
-Strategies: `first` `last` `random` `chain` `all-bfs` `all-dfs` `opt`
+Strategies: `first` `last` `random` `chain` `chained-single-query` `all-bfs` `all-dfs` `opt`
+
+`chain` passes `-unmerge-chain` and emits one independently solvable SMT query
+per path.
+`chained-single-query` uses the same `-unmerge-chain` lowering and passes
+`-disjunction-single-query`, producing one query containing the disjunction of
+all paths.
 
 Outputs into `select-results-strategies/{benchmark}/`:
 - `{benchmark}-{strategy}.ll` / `.smt2` — generated files
@@ -24,6 +30,7 @@ Outputs into `select-results-strategies/{benchmark}/`:
 
 ```bash
 scripts/run-variant.sh chain path/to/benchmark.smt2
+scripts/run-variant.sh chained-single-query path/to/benchmark.smt2
 scripts/run-variant.sh opt path/to/benchmark.smt2 /custom/results/dir
 WORKERS=8 scripts/run-variant.sh all-bfs path/to/benchmark.smt2
 ```
@@ -31,7 +38,7 @@ WORKERS=8 scripts/run-variant.sh all-bfs path/to/benchmark.smt2
 ---
 
 ### `run-all-variants.sh`
-Runs all 7 strategies for one benchmark by calling `run-variant.sh` in sequence.
+Runs all configured strategies for one benchmark by calling `run-variant.sh` in sequence.
 
 ```bash
 scripts/run-all-variants.sh path/to/benchmark.smt2
@@ -107,7 +114,7 @@ python3 scripts/make_time_breakdown_csv.py /custom/results/dir /custom/output.cs
 ---
 
 ### `make_unsat_time_breakdown_csv.py`
-Collects only the benchmarks listed in `torun-unsat.txt` and writes `scripts/time_breakdown_unsat.csv`. It records solver/result status, excludes stale non-manifest runs, suppresses stale strategy artifacts for zero-select inputs, and leaves numeric solver/total fields blank for parse errors or other invalid outcomes.
+Collects only the benchmarks listed in `torun-unsat.txt` and writes `scripts/time_breakdown_unsat.csv`. Like the general collector, it reads every available timing log without inferring eligibility from select counts. It records solver/result status, excludes stale non-manifest runs, and leaves numeric solver/total fields blank for parse errors or other invalid outcomes.
 
 ```bash
 python3 scripts/make_unsat_time_breakdown_csv.py
@@ -115,7 +122,7 @@ python3 scripts/make_unsat_time_breakdown_csv.py /custom/results/dir /custom/tim
 ```
 
 ### `graphs/plot_unsat.py`
-Reads the separate UNSAT CSV and writes paired scatter and cactus PDFs under `graphs/unsat/`. Only select-eligible benchmarks are included; SAT graph files are not read or overwritten.
+Reads the separate UNSAT CSV and writes paired scatter and cactus PDFs under `graphs/unsat/`. Every available numeric timing is included; SAT graph files are not read or overwritten.
 
 ```bash
 python3 graphs/plot_unsat.py
@@ -155,7 +162,7 @@ Sourced by the shell scripts above. Defines shared paths and helpers — not run
 | `SLOT` | `src/slot` |
 | `SOLVERS_DIR` | `solvers/` |
 | `PARALLEL_SOLVER` | `scripts/parallel_solver.py` |
-| `STRATEGIES` | `(first last random chain all-bfs all-dfs opt)` |
+| `STRATEGIES` | `(chain opt first last random chained-single-query)` |
 | `SELECT_COUNT` | `5` |
 | `WORKERS` | `16` (env-overridable) |
 | `SKIP_DONE` | `1` — skip phases whose outputs exist; set `0` to always rerun (env-overridable) |

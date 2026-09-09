@@ -71,7 +71,7 @@ void Help()
   std::cout << "   -unmerge-all        : Lower all select instructions (no filtering)\n";
   std::cout << "   -li <file>     : Load LLVM IR directly (skip SMT2 frontend). Requires a function named '" << LLVM_FUNCTION_NAME << "'\n";
   std::cout << "   -single-query  : Produce one SMT query using implies-based encoding (no path splitting). Avoids exponential blowup on large inputs\n";
-  std::cout << "   -disjunction   : Produce one SMT query that is the disjunction of all split-path queries, instead of one query per path\n";
+  std::cout << "   -disjunction-single-query : Produce one SMT query that is the disjunction of all split-path queries, instead of one query per path\n";
   std::cout << "   -max-paths <n>  : Cap the number of queries produced by path splitting. When the limit is\n";
   std::cout << "                     reached, unresolved selects in remaining paths use implies-based encoding.\n";
   std::cout << "                     Default: 0 (unlimited, may OOM on inputs with many selects)\n";
@@ -433,9 +433,9 @@ unsigned short RunPasses(unsigned short flags, Function &fun, PassTimings &timin
     }
   }
 
-  auto earlyCSEStart = high_resolution_clock::now();
-  EarlyCSEPass().run(fun, FAM);
-  timings.earlyCSE += high_resolution_clock::now() - earlyCSEStart;
+  // auto earlyCSEStart = high_resolution_clock::now();
+  // EarlyCSEPass().run(fun, FAM);
+  // timings.earlyCSE += high_resolution_clock::now() - earlyCSEStart;
 
   if (flags & REASSOCIATE)
   {
@@ -674,7 +674,7 @@ int main(int argc, char *argv[])
   LowerSelectConfig unmergeConfig = ParseUnmergeConfig(argc, argv, parsedPasses);
   PathExplorationStrategy pathStrategy = ParsePathStrategy(argc, argv);
   bool singleQuery = HasFlag(argc, argv, "-single-query");
-  bool disjunction = HasFlag(argc, argv, "-disjunction");
+  bool disjunctionSingleQuery = HasFlag(argc, argv, "-disjunction-single-query");
 
   size_t maxPaths = 0;
   if (HasFlag(argc, argv, "-max-paths"))
@@ -816,7 +816,7 @@ int main(int argc, char *argv[])
     smtOut << "; query 1\n";
     smtOut << querySolver.to_smt2();
   }
-  else if (disjunction)
+  else if (disjunctionSingleQuery)
   {
     // SINGLE QUERY WITH DISJUNCTION
     std::vector<expr> smtQueries = f.ToSMTQueries(pathStrategy, maxPaths);
