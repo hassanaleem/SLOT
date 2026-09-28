@@ -10,10 +10,12 @@ Reads:
 Writes PDFs into this directory, one per comparison (see COMPARISONS below):
   z3_slot_vs_chain_{solver,total}.pdf
   z3_chain_vs_chained_single_query_{solver,total}.pdf
+  z3_chain_vs_chain_sink_{solver,total}.pdf
   z3_chain_vs_z3baseline_{solver,total}.pdf
   z3_chain_vs_z3flag_{solver,total}.pdf
   cvc5_slot_vs_chain_{solver,total}.pdf
   cvc5_chain_vs_chained_single_query_{solver,total}.pdf
+  cvc5_chain_vs_chain_sink_{solver,total}.pdf
   cvc5_chain_vs_cvc5baseline_{solver,total}.pdf
   cvc5_chain_vs_cvc5ite_{solver,total}.pdf
   cvc5_chain_vs_cvc5iteheur_{solver,total}.pdf
@@ -287,6 +289,8 @@ def plot_metric(xs, ys, statuses, y_label, x_label, filename):
 # both sides come from the same breakdown CSV (generated+solved with one solver)
 SAME_SOURCE = [
     ("slot", "chain", "Slot", "ThunderFork", "slot_vs_chain"),
+    ("chain", "chain_sink", "ThunderFork-Parallel", "ThunderFork-Parallel + Sink",
+     "chain_vs_chain_sink"),
     ("chain", "chained_single_query", "ThunderFork-Parallel", "ThunderFork-Single-Query",
      "chain_vs_chained_single_query"),
 ]

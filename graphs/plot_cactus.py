@@ -7,15 +7,17 @@ budget, so this is the clearest way to compare timeout behavior across methods.
 Reads the same sources as plot_paired_scatter.py (and reuses its benchmark
 normalization/index helpers, so "N attempted" always means the same set of
 benchmarks across every line drawn together on one plot):
-  - ../scripts/time_breakdown_z3.csv / time_breakdown_cvc5.csv (chain,
-    chained-single-query methods)
+  - ../scripts/time_breakdown-llvm22-z3.csv / time_breakdown-llvm22-cvc5.csv
+    (chain, chain-sink, chained-single-query, and their path-opt variants)
   - ../z3-variants.csv / ../cvc5-variants.csv (baseline + flag variants)
 
 Writes into this directory:
   z3_cactus_chain_vs_chained_single_query_{solver,total}.pdf
   cvc5_cactus_chain_vs_chained_single_query_{solver,total}.pdf
-                                           - ThunderFork-Parallel (chain) vs
-                                             ThunderFork-Single-Query (chained_single_query)
+                                           - the four ThunderFork strategies,
+                                             with and without per-path optimization
+  {z3,cvc5}_cactus_chain_vs_chain_sink_{solver,total}.pdf
+                                           - chain vs chain-sink
   z3_cactus_baseline_{solver,total}.pdf   - chain vs z3 baseline vs z3+flag
   cvc5_cactus_baseline_{solver,total}.pdf - chain vs cvc5 baseline vs cvc5+ite(-heuristics)
 """
@@ -46,6 +48,15 @@ BLUE = "#2a78d6"
 ORANGE = "#eb6834"
 AQUA = "#1baf7a"
 YELLOW = "#eda100"
+PURPLE = "#7a5c99"
+
+# Keep each strategy's label/color tied to its timing CSV column prefix.
+THUNDERFORK_METHODS = [
+    ("ThunderFork-Parallel", ORANGE, "chain"),
+    ("ThunderFork-Single-Query", AQUA, "chained_single_query"),
+    ("ThunderFork-Parallel + Path Opt", BLUE, "chain_path_opt"),
+    ("ThunderFork-Single-Query + Path Opt", PURPLE, "chained_single_query_path_opt"),
+]
 
 
 def breakdown_timed_out(row, method):
@@ -121,7 +132,7 @@ def plot_cactus(series, total_attempted, filename):
     for spine in ax.spines.values():
         spine.set_color(BASELINE_AXIS)
 
-    ax.legend(loc="upper left", ncol=1, frameon=True, facecolor=SURFACE,
+    ax.legend(loc="best", ncol=1, frameon=True, facecolor=SURFACE,
               edgecolor="none", framealpha=0.9, fontsize=12,
               labelcolor=INK_SECONDARY, handlelength=1.8, columnspacing=1.3)
 
@@ -131,6 +142,28 @@ def plot_cactus(series, total_attempted, filename):
     plt.close(fig)
     counts = ", ".join(f"{label}={len(times)}" for label, _, times in series)
     print(f"wrote {out_path} (of {total_attempted} attempted: {counts})")
+
+
+def plot_chain_sink(idx, solver_name, metric_suffix, metric_tag):
+    # Compare the same benchmarks, keeping timeouts in the attempted count.
+    methods = [
+        ("ThunderFork-Parallel", ORANGE, "chain"),
+        ("ThunderFork-Parallel + Sink", BLUE, "chain_sink"),
+    ]
+    common_keys = [
+        key for key, row in idx.items()
+        if all(parse_time(row, f"{method}_{metric_suffix}") is not None
+               for _, _, method in methods)
+    ]
+    filename = f"{solver_name}_cactus_chain_vs_chain_sink_{metric_tag}.pdf"
+    if not common_keys:
+        print(f"skipped {filename} (no paired data)")
+        return
+    series = [
+        (label, color, breakdown_series_common(idx, method, metric_suffix, common_keys))
+        for label, color, method in methods
+    ]
+    plot_cactus(series, len(common_keys), filename)
 
 
 def build_and_plot():
@@ -147,12 +180,13 @@ def build_and_plot():
     for metric_suffix, metric_tag in [
         ("solver_time", "solver"), ("total_seconds", "total"),
     ]:
-        # --- ThunderFork chain vs chained-single-query: both drawn from the
+        # --- Four ThunderFork strategies, all drawn from the
         # same breakdown CSV, so "attempted" is that CSV's own benchmark count. ---
         for solver_name, idx in [("z3", z3_idx), ("cvc5", cvc5_idx)]:
+            plot_chain_sink(idx, solver_name, metric_suffix, metric_tag)
             series = [
-                ("ThunderFork-Parallel", ORANGE, method_series(idx, "chain", metric_suffix)),
-                ("ThunderFork-Single-Query", AQUA, method_series(idx, "chained_single_query", metric_suffix)),
+                (label, color, method_series(idx, method, metric_suffix))
+                for label, color, method in THUNDERFORK_METHODS
             ]
             plot_cactus(
                 series, len(idx),

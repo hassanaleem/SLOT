@@ -38,3 +38,13 @@ Unmerging-llvm/lower-select.o: Unmerging-llvm/lower-select.cpp Unmerging-llvm/lo
 
 clean:
 	rm *.o
+
+.PHONY: test-path-opt
+test-path-opt: LLVMFunction.o LLVMNode.o Unmerging-llvm/lower-select.o
+	$(CC) $(CPPFLAGS) -o tests/path-opt-test tests/path-opt.cpp LLVMFunction.o LLVMNode.o Unmerging-llvm/lower-select.o $(LDLIBS)
+	./tests/path-opt-test
+
+.PHONY: test-nested-selects
+test-nested-selects: LLVMFunction.o LLVMNode.o Unmerging-llvm/lower-select.o
+	$(CC) $(CPPFLAGS) -o /tmp/slot-nested-selects-test tests/nested-selects.cpp LLVMFunction.o LLVMNode.o Unmerging-llvm/lower-select.o $(LDLIBS)
+	/tmp/slot-nested-selects-test

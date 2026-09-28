@@ -62,48 +62,18 @@ namespace SLOT
                 return cached->second;
             }
 
-            if (phi->getNumIncomingValues() != 2)
-            {
-                throw UnsupportedLLVMOpException("PHI nodes with more than two incoming values are unsupported", phi);
-            }
-
-            BasicBlock* first_pred = phi->getIncomingBlock(0);
-            BasicBlock* second_pred = phi->getIncomingBlock(1);
-            BasicBlock* common_pred = first_pred->getSinglePredecessor();
-
-            if (common_pred == nullptr || common_pred != second_pred->getSinglePredecessor())
-            {
-                throw UnsupportedLLVMOpException("PHI nodes without a shared conditional predecessor are unsupported", phi);
-            }
-
-            auto* branch = dyn_cast<BranchInst>(common_pred->getTerminator());
-            if (branch == nullptr || !branch->isConditional())
-            {
-                throw UnsupportedLLVMOpException("PHI nodes without a shared conditional branch are unsupported", phi);
-            }
+            LoweredPhiInfo info;
+            if (!GetLoweredPhiInfo(phi, info, function.dominators))
+                throw UnsupportedLLVMOpException("unsupported select PHI", phi);
 
             expr phi_value = FreshVariableForValue(phi, shiftToMultiply, scx, function, "phi");
             function.loweredValues.emplace(phi, phi_value);
-
-            expr condition = ValueToSMT(branch->getCondition(), shiftToMultiply, scx, function);
-            expr first_value = ValueToSMT(phi->getIncomingValue(0), shiftToMultiply, scx, function);
-            expr second_value = ValueToSMT(phi->getIncomingValue(1), shiftToMultiply, scx, function);
-
-            if (branch->getSuccessor(0) == first_pred && branch->getSuccessor(1) == second_pred)
-            {
-                function.AddConstraint(implies(condition, phi_value == first_value));
-                function.AddConstraint(implies(!condition, phi_value == second_value));
-                return phi_value;
-            }
-
-            if (branch->getSuccessor(0) == second_pred && branch->getSuccessor(1) == first_pred)
-            {
-                function.AddConstraint(implies(condition, phi_value == second_value));
-                function.AddConstraint(implies(!condition, phi_value == first_value));
-                return phi_value;
-            }
-
-            throw UnsupportedLLVMOpException("PHI incoming blocks do not match the shared branch successors", phi);
+            expr condition = ValueToSMT(info.branch->getCondition(), shiftToMultiply, scx, function);
+            expr true_value = ValueToSMT(info.trueValue, shiftToMultiply, scx, function);
+            expr false_value = ValueToSMT(info.falseValue, shiftToMultiply, scx, function);
+            function.AddConstraint(implies(condition, phi_value == true_value));
+            function.AddConstraint(implies(!condition, phi_value == false_value));
+            return phi_value;
         }
     }
 

@@ -8,7 +8,10 @@ from pathlib import Path
 TYPES = [
     ("slot",                 "opt"),
     ("chain",                "chain"),
+    ("chain_sink",           "chain-sink"),
     ("chained_single_query", "chained-single-query"),
+    ("chain_path_opt",        "chain-path-opt"),
+    ("chained_single_query_path_opt", "chained-single-query-path-opt"),
     ("first",                 "first"),
     ("last",                  "last"),
     ("random",                "random"),

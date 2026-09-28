@@ -78,8 +78,46 @@ The SLOT executable takes the following terminal flags and arguments (which can 
 -gvn          : Run global value numbering (GVN) pass
 -unmerge      : Run the unmerge/lower-select pass
 -nounmerge    : Disable unmerge/lower-select, including when -pall is used
+-path-opt     : Optimize each selected path's LLVM body before SMT conversion
 ```
 The `-lo` and `-lu` optional flags allow users to see the LLVM IR produced by SLOT before and after optimization. By default, both statistics and the output simplified constraint are sent to stdout, but these can be redirected to files with the `-o` and `-t` flags. Flags are also provided for each of the relevant optimization passes (see the accepted paper for further details), in addition to the `-pall` flag which runs all passes. Use `-pall -nounmerge` to run the optimization pipeline without unmerging.
+
+Unmerging starts from a single LLVM block. The selection strategy chooses which
+selects to lower; they are then lowered in reverse instruction order, with LLVM
+code sinking after each step. This moves computations used by only one arm into
+that arm, allowing later lowering to create nested diamonds. Shared computations
+stay outside. Path exploration resolves an enclosing choice before visiting its
+chosen operand, while resolving dependencies of the condition first.
+
+Use `-path-opt` to add a second optimization stage after choosing each path:
+
+```sh
+src/slot -s input.smt2 -pall -unmerge-first 5 -path-opt -o paths.smt2 -t paths.csv
+```
+
+For each path with at least one selected PHI, SLOT materializes a temporary,
+single-basic-block LLVM function containing the return expression and its
+dependencies, with selected PHIs replaced by their chosen operands. It runs
+`InstCombine → SCCP → EarlyCSE → InstCombine → DCE`, translates the optimized
+body to SMT, and conjoins the original path condition. The temporary function
+is then deleted. The original function and path enumeration stay intact.
+
+This first stage specializes operands; it does not feed path predicates such
+as `x == 0` into LLVM as assumptions. Path constraints stay in the SMT query,
+including when the optimized body becomes constant. Unresolved PHIs on capped
+paths (`-max-paths`) become ordinary selects in the temporary function, without
+further splitting. Selects introduced by optimization also remain unsplit.
+Paths with no selected PHIs use the existing translation.
+
+The flag is opt-in, independent of `-pall`, and works with BFS, DFS, and
+`-disjunction-single-query`. It cannot be combined with `-single-query`, which
+disables path splitting. `-lo` still describes the global optimization stage.
+Compare otherwise identical runs with and without `-path-opt` to measure its
+benefit. A `path-opt:` line on stderr reports the number of optimized paths,
+summed instruction counts before/after the scalar passes (including returns),
+and time spent materializing, verifying, and optimizing their LLVM functions.
+This time is included in the existing backend time; the CSV schema is unchanged.
+Run the Z3 equivalence regressions with `make -C src test-path-opt`.
 
 SLOT's output statistics take the following form:
 ```

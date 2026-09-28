@@ -10,7 +10,8 @@ SLOT="${script_dir}/../src/slot"
 SOLVERS_DIR="${script_dir}/../solvers"
 PARALLEL_SOLVER="${script_dir}/parallel_solver.py"
 # STRATEGIES=(first last random chain all-bfs all-dfs opt)
-STRATEGIES=(chain chained-single-query)
+# STRATEGIES=(chain chain-sink chained-single-query chain-path-opt chained-single-query-path-opt)
+STRATEGIES=(chain chain-sink)
 
 STRATEGIES_UNSAT=(chain opt chained-single-query)
 
@@ -32,15 +33,19 @@ if [ ! -x "$SLOT" ]; then
 fi
 
 # strategy_flags <strategy> — sets slot_flags with the slot arguments for the strategy
-# Both chain strategies use SLOT's -unmerge-chain lowering. The
-# chained-single-query variant combines the resulting path queries into one
-# disjunction instead of emitting one independently solvable query per path.
+# The chain variants share the same select lowering. Single-query variants
+# combine paths into a disjunction; path-opt variants optimize each LLVM path
+# body before SMT conversion (and before combining, when requested).
+# chain-sink additionally enables sinking after each lowered select.
 strategy_flags() {
     local strategy=$1
     case "$strategy" in
         first|last|random)       slot_flags=("-unmerge-$strategy" "$SELECT_COUNT") ;;
         chain)                   slot_flags=(-unmerge-chain "$SELECT_COUNT") ;;
+        chain-sink)              slot_flags=(-unmerge-chain "$SELECT_COUNT" -unmerge-sink) ;;
         chained-single-query)    slot_flags=(-unmerge-chain "$SELECT_COUNT" -disjunction-single-query) ;;
+        chain-path-opt)          slot_flags=(-unmerge-chain "$SELECT_COUNT" -path-opt) ;;
+        chained-single-query-path-opt) slot_flags=(-unmerge-chain "$SELECT_COUNT" -disjunction-single-query -path-opt) ;;
         all-bfs|all-dfs)         slot_flags=(-unmerge-all -max-paths "$((1 << SELECT_COUNT))" -path-strategy "${strategy#all-}") ;;
         opt)                     slot_flags=(-nounmerge) ;;
         *)                       echo "Unknown strategy: $strategy" >&2; return 1 ;;

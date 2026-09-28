@@ -2,6 +2,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -40,8 +41,25 @@ namespace SLOT
       DFS
   };
 
+  struct LoweredPhiInfo
+  {
+      BranchInst* branch;
+      Value* trueValue;
+      Value* falseValue;
+  };
+
+  bool GetLoweredPhiInfo(PHINode* phi, LoweredPhiInfo& info, DominatorTree& dominators);
+
   class LLVMNode;
   class LLVMFunction;
+
+  struct PathOptimizationStats
+  {
+      size_t paths = 0;
+      size_t instructionsBefore = 0;
+      size_t instructionsAfter = 0;
+      double seconds = 0;
+  };
 
   class LLVMFunction
   {
@@ -53,6 +71,7 @@ namespace SLOT
       std::map<const Value *, expr> loweredValues;
       std::map<const Value *, const Value *> phiSelections;
       Function *contents;
+      DominatorTree dominators;
       bool shiftToMultiply;
       expr extraVariables; // Hold results of bitcast to bitvector
       bool hasExtraConstraints;
@@ -62,7 +81,9 @@ namespace SLOT
 
       LLVMFunction(bool t_shiftToMultiply, context &t_scx, Function *t_contents);
       expr ToSMT();
-      std::vector<expr> ToSMTQueries(PathExplorationStrategy strategy, size_t maxPaths = 0);
+      // A non-null stats pointer enables optimization of each selected path body.
+      std::vector<expr> ToSMTQueries(PathExplorationStrategy strategy, size_t maxPaths = 0,
+                                   PathOptimizationStats* pathOptimization = nullptr);
 
       // bool CheckAssignment(model m);
   };

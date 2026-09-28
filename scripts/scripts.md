@@ -13,13 +13,29 @@
 ### `run-variant.sh`
 Runs one strategy end-to-end for one benchmark: generates LLVM IR and SMT2, then solves.
 
-Strategies: `first` `last` `random` `chain` `chained-single-query` `all-bfs` `all-dfs` `opt`
+The default sweep runs these four strategies:
 
-`chain` passes `-unmerge-chain` and emits one independently solvable SMT query
-per path.
-`chained-single-query` uses the same `-unmerge-chain` lowering and passes
-`-disjunction-single-query`, producing one query containing the disjunction of
-all paths.
+| Strategy | SMT output | Per-path LLVM optimization |
+|---|---|---|
+| `chain` | One query per path | No |
+| `chained-single-query` | One disjunction of all paths | No |
+| `chain-path-opt` | One query per path | Yes |
+| `chained-single-query-path-opt` | One disjunction of all paths | Yes |
+
+All four use the same global optimization pipeline and `-unmerge-chain 5`.
+The `-path-opt` variants optimize each selected path's LLVM body before SMT
+conversion. The single-query variants then combine the path queries using
+`-disjunction-single-query`. Rebuild SLOT with `make -C src` before running
+these variants. Each strategy has separate generated files and timing logs;
+`make_time_breakdown_csv.py` includes the new variants' generation, solving,
+and total times.
+
+Other individually selectable strategies remain available:
+`chain-sink`, `first`, `last`, `random`, `all-bfs`, `all-dfs`, and `opt`.
+
+`chain-sink` uses exactly the same flags as `chain`, plus `-unmerge-sink`:
+`-pall -unmerge-chain 5 -unmerge-sink`. This enables sinking after each
+lowered select. Its timing CSV columns use the `chain_sink` prefix.
 
 Outputs into `select-results-strategies/{benchmark}/`:
 - `{benchmark}-{strategy}.ll` / `.smt2` — generated files
@@ -30,7 +46,10 @@ Outputs into `select-results-strategies/{benchmark}/`:
 
 ```bash
 scripts/run-variant.sh chain path/to/benchmark.smt2
+scripts/run-variant.sh chain-sink path/to/benchmark.smt2
 scripts/run-variant.sh chained-single-query path/to/benchmark.smt2
+scripts/run-variant.sh chain-path-opt path/to/benchmark.smt2
+scripts/run-variant.sh chained-single-query-path-opt path/to/benchmark.smt2
 scripts/run-variant.sh opt path/to/benchmark.smt2 /custom/results/dir
 WORKERS=8 scripts/run-variant.sh all-bfs path/to/benchmark.smt2
 ```
@@ -38,7 +57,8 @@ WORKERS=8 scripts/run-variant.sh all-bfs path/to/benchmark.smt2
 ---
 
 ### `run-all-variants.sh`
-Runs all configured strategies for one benchmark by calling `run-variant.sh` in sequence.
+Runs the four default strategies for one benchmark, completing query generation
+for all four before solving each variant.
 
 ```bash
 scripts/run-all-variants.sh path/to/benchmark.smt2
@@ -113,6 +133,36 @@ python3 scripts/make_time_breakdown_csv.py /custom/results/dir /custom/output.cs
 
 ---
 
+### `graphs/plot_paired_scatter.py`
+Reads `scripts/time_breakdown-llvm22-z3.csv` and
+`scripts/time_breakdown-llvm22-cvc5.csv`, plus the baseline variant CSVs.
+Includes paired `chain` versus `chain-sink` scatter plots for solver time and
+total time, using the `chain_*` and `chain_sink_*` columns. The plots put
+`chain-sink` on the x-axis and `chain` on the y-axis, and write
+`graphs/{z3,cvc5}_chain_vs_chain_sink_{solver,total}.pdf`.
+Benchmarks missing either timing are skipped.
+
+```bash
+python3 graphs/plot_paired_scatter.py
+```
+
+### `graphs/plot_cactus.py`
+Reads `scripts/time_breakdown-llvm22-z3.csv` and
+`scripts/time_breakdown-llvm22-cvc5.csv`. The strategy-comparison plots show
+`chain`, `chained-single-query`, `chain-path-opt`, and
+`chained-single-query-path-opt`, with separate PDFs for solver time and total
+time. Existing `graphs/{z3,cvc5}_cactus_chain_vs_chained_single_query_{solver,total}.pdf`
+filenames are retained. Optimized variants are labeled `+ Path Opt` in the legend.
+
+Separate `chain` versus `chain-sink` cactus plots are written to
+`graphs/{z3,cvc5}_cactus_chain_vs_chain_sink_{solver,total}.pdf`. Each comparison
+uses benchmarks with timing data for both strategies; timed-out runs remain
+in the attempted count but are excluded from the solved curves.
+
+```bash
+python3 graphs/plot_cactus.py
+```
+
 ### `make_unsat_time_breakdown_csv.py`
 Collects only the benchmarks listed in `torun-unsat.txt` and writes `scripts/time_breakdown_unsat.csv`. Like the general collector, it reads every available timing log without inferring eligibility from select counts. It records solver/result status, excludes stale non-manifest runs, and leaves numeric solver/total fields blank for parse errors or other invalid outcomes.
 
@@ -162,7 +212,7 @@ Sourced by the shell scripts above. Defines shared paths and helpers — not run
 | `SLOT` | `src/slot` |
 | `SOLVERS_DIR` | `solvers/` |
 | `PARALLEL_SOLVER` | `scripts/parallel_solver.py` |
-| `STRATEGIES` | `(chain opt first last random chained-single-query)` |
+| `STRATEGIES` | `(chain chained-single-query chain-path-opt chained-single-query-path-opt)` |
 | `SELECT_COUNT` | `5` |
 | `WORKERS` | `16` (env-overridable) |
 | `SKIP_DONE` | `1` — skip phases whose outputs exist; set `0` to always rerun (env-overridable) |

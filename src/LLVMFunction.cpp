@@ -1,7 +1,14 @@
 #include "LLVMNode.h"
 #include "SLOTExceptions.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar/DCE.h"
+#include "llvm/Transforms/Scalar/EarlyCSE.h"
+#include "llvm/Transforms/Scalar/SCCP.h"
+#include <chrono>
 #include <deque>
+#include <functional>
 #include <regex>
 #include <set>
 
@@ -11,16 +18,30 @@
 
 namespace SLOT
 {
+    // Lowering only creates structured diamonds. The join's immediate dominator
+    // is its controlling branch, even when an arm contains more diamonds.
+    bool GetLoweredPhiInfo(PHINode* phi, LoweredPhiInfo& info, DominatorTree& dominators)
+    {
+        if (phi->getNumIncomingValues() != 2)
+            return false;
+        auto* node = dominators.getNode(phi->getParent());
+        if (!node || !node->getIDom())
+            return false;
+        auto* branch = dyn_cast<BranchInst>(node->getIDom()->getBlock()->getTerminator());
+        if (!branch || !branch->isConditional())
+            return false;
+
+        unsigned trueIndex = dominators.dominates(branch->getSuccessor(0),
+                                                  phi->getIncomingBlock(0)) ? 0 : 1;
+        if (!dominators.dominates(branch->getSuccessor(0), phi->getIncomingBlock(trueIndex)) ||
+            !dominators.dominates(branch->getSuccessor(1), phi->getIncomingBlock(1 - trueIndex)))
+            return false;
+        info = {branch, phi->getIncomingValue(trueIndex), phi->getIncomingValue(1 - trueIndex)};
+        return true;
+    }
+
     namespace
     {
-        struct LoweredPhiInfo
-        {
-            PHINode* phi;
-            BranchInst* branch;
-            Value* trueValue;
-            Value* falseValue;
-        };
-
         struct PathState
         {
             std::map<const Value *, const Value *> phiSelections;
@@ -50,46 +71,126 @@ namespace SLOT
             return ret;
         }
 
-        bool GetLoweredPhiInfo(PHINode* phi, LoweredPhiInfo& info)
+        expr OptimizePathBody(Function* original, DominatorTree& dominators, Value* result, const PathState& state,
+                              bool shiftToMultiply, context& scx, PathOptimizationStats& stats)
         {
-            if (phi->getNumIncomingValues() != 2)
+            const auto start = std::chrono::steady_clock::now();
+            // Keep the original function and path-selection pointers intact. Only
+            // clone the expression DAG needed by this path's return value.
+            auto eraseFunction = [](Function* function) { function->eraseFromParent(); };
+            std::unique_ptr<Function, decltype(eraseFunction)> path(
+                Function::Create(original->getFunctionType(), GlobalValue::PrivateLinkage,
+                                 "slot.path", original->getParent()), eraseFunction);
+            BasicBlock* block = BasicBlock::Create(original->getContext(), "entry", path.get());
+            IRBuilder<> builder(block);
+            std::map<const Value*, Value*> values;
+            for (Argument& arg : original->args())
             {
-                return false;
+                Argument* copy = path->getArg(arg.getArgNo());
+                copy->setName(arg.getName()); // SMT inputs must retain their names.
+                values.emplace(&arg, copy);
             }
 
-            BasicBlock* firstPred = phi->getIncomingBlock(0);
-            BasicBlock* secondPred = phi->getIncomingBlock(1);
-            BasicBlock* commonPred = firstPred->getSinglePredecessor();
+            std::set<const Value*> active;
+            std::function<Value*(Value*)> materialize = [&](Value* value) -> Value* {
+                auto cached = values.find(value);
+                if (cached != values.end())
+                    return cached->second;
+                if (isa<Constant>(value))
+                    return value;
+                // Constrained FP intrinsics use immutable strings for rounding
+                // and exception behavior; these are shared in the LLVM context.
+                if (auto* metadata = dyn_cast<MetadataAsValue>(value))
+                    if (isa<MDString>(metadata->getMetadata()))
+                        return value;
+                if (!active.insert(value).second)
+                    throw UnsupportedLLVMOpException("cyclic path expression", value);
 
-            if (commonPred == nullptr || commonPred != secondPred->getSinglePredecessor())
-            {
-                return false;
-            }
+                Value* copy = nullptr;
+                if (auto* phi = dyn_cast<PHINode>(value))
+                {
+                    auto selected = state.phiSelections.find(phi);
+                    if (selected != state.phiSelections.end())
+                    {
+                        copy = materialize(const_cast<Value*>(selected->second));
+                    }
+                    else
+                    {
+                        // A capped path can still have unresolved choices. Preserve
+                        // both arms as a select without creating further paths.
+                        LoweredPhiInfo info;
+                        if (!GetLoweredPhiInfo(phi, info, dominators))
+                            throw UnsupportedLLVMOpException("unsupported path PHI", phi);
+                        Value* condition = materialize(info.branch->getCondition());
+                        Value* whenTrue = materialize(info.trueValue);
+                        Value* whenFalse = materialize(info.falseValue);
+                        copy = builder.CreateSelect(condition, whenTrue, whenFalse, phi->getName());
+                    }
+                }
+                else if (auto* inst = dyn_cast<Instruction>(value))
+                {
+                    auto* constrained = dyn_cast<ConstrainedFPIntrinsic>(inst);
+                    // LLVM models the FP environment as inaccessible memory.
+                    // SLOT's fixed-rounding, exception-ignoring calls are pure
+                    // expressions under the SMT semantics used by the frontend.
+                    const bool pureConstrainedFP = constrained &&
+                        constrained->getExceptionBehavior() == fp::ebIgnore &&
+                        constrained->getRoundingMode() != RoundingMode::Dynamic;
+                    if (inst->isTerminator() ||
+                        ((inst->mayReadOrWriteMemory() || inst->mayHaveSideEffects()) && !pureConstrainedFP))
+                        throw UnsupportedLLVMOpException("path optimization requires pure expressions", inst);
+                    SmallVector<Value*, 4> operands;
+                    for (Value* operand : inst->operands())
+                        operands.push_back(materialize(operand));
+                    Instruction* cloned = inst->clone();
+                    // Metadata can refer to values or scopes in the source function.
+                    cloned->dropUnknownNonDebugMetadata();
+                    cloned->setDebugLoc(DebugLoc());
+                    for (unsigned i = 0; i < operands.size(); ++i)
+                        cloned->setOperand(i, operands[i]);
+                    builder.Insert(cloned, inst->getName());
+                    copy = cloned;
+                }
+                else
+                {
+                    throw UnsupportedLLVMOpException("unsupported path value", value);
+                }
+                active.erase(value);
+                values.emplace(value, copy);
+                return copy;
+            };
+            builder.CreateRet(materialize(result));
+            if (verifyFunction(*path, &errs()))
+                throw std::runtime_error("invalid materialized path function");
+            const size_t before = block->size();
 
-            auto* branch = dyn_cast<BranchInst>(commonPred->getTerminator());
-            if (branch == nullptr || !branch->isConditional())
-            {
-                return false;
-            }
+            LoopAnalysisManager lam;
+            FunctionAnalysisManager fam;
+            CGSCCAnalysisManager cgam;
+            ModuleAnalysisManager mam;
+            PassBuilder pb;
+            pb.registerModuleAnalyses(mam);
+            pb.registerCGSCCAnalyses(cgam);
+            pb.registerFunctionAnalyses(fam);
+            pb.registerLoopAnalyses(lam);
+            pb.crossRegisterProxies(lam, fam, cgam, mam);
+            FunctionPassManager passes;
+            passes.addPass(InstCombinePass());
+            passes.addPass(SCCPPass());
+            passes.addPass(EarlyCSEPass());
+            passes.addPass(InstCombinePass());
+            passes.addPass(DCEPass());
+            passes.run(*path, fam);
+            if (verifyFunction(*path, &errs()))
+                throw std::runtime_error("invalid optimized path function");
 
-            info.phi = phi;
-            info.branch = branch;
-
-            if (branch->getSuccessor(0) == firstPred && branch->getSuccessor(1) == secondPred)
-            {
-                info.trueValue = phi->getIncomingValue(0);
-                info.falseValue = phi->getIncomingValue(1);
-                return true;
-            }
-
-            if (branch->getSuccessor(0) == secondPred && branch->getSuccessor(1) == firstPred)
-            {
-                info.trueValue = phi->getIncomingValue(1);
-                info.falseValue = phi->getIncomingValue(0);
-                return true;
-            }
-
-            return false;
+            ++stats.paths;
+            stats.instructionsBefore += before;
+            for (BasicBlock& bb : *path)
+                stats.instructionsAfter += bb.size();
+            stats.seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+            LLVMFunction evaluator(shiftToMultiply, scx, path.get());
+            return evaluator.ToSMT();
         }
 
         expr EvaluateWithSelections(Value* value, bool shiftToMultiply, context& scx, Function* contents,
@@ -101,7 +202,7 @@ namespace SLOT
             return evaluator.hasExtraConstraints ? (evaluator.extraVariables && result) : result;
         }
 
-        PHINode* FindNextLoweredPhi(Value* value, bool shiftToMultiply, context& scx, Function* contents,
+        PHINode* FindNextLoweredPhi(Value* value, DominatorTree& dominators,
                                     const std::map<const Value *, const Value *>& phiSelections,
                                     std::set<const Value *>& visited)
         {
@@ -115,30 +216,23 @@ namespace SLOT
                 auto selected = phiSelections.find(phi);
                 if (selected != phiSelections.end())
                 {
-                    return FindNextLoweredPhi(const_cast<Value*>(selected->second), shiftToMultiply, scx, contents, phiSelections, visited);
+                    return FindNextLoweredPhi(const_cast<Value*>(selected->second), dominators, phiSelections, visited);
                 }
 
                 LoweredPhiInfo info;
-                if (GetLoweredPhiInfo(phi, info))
+                if (GetLoweredPhiInfo(phi, info, dominators))
                 {
-                    if (auto* nested = FindNextLoweredPhi(info.branch->getCondition(), shiftToMultiply, scx, contents, phiSelections, visited))
+                    if (auto* nested = FindNextLoweredPhi(info.branch->getCondition(), dominators, phiSelections, visited))
                     {
                         return nested;
                     }
-                    if (auto* nested = FindNextLoweredPhi(info.trueValue, shiftToMultiply, scx, contents, phiSelections, visited))
-                    {
-                        return nested;
-                    }
-                    if (auto* nested = FindNextLoweredPhi(info.falseValue, shiftToMultiply, scx, contents, phiSelections, visited))
-                    {
-                        return nested;
-                    }
+                    // Choose the enclosing arm before exploring its operands.
                     return phi;
                 }
 
                 for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i)
                 {
-                    if (auto* nested = FindNextLoweredPhi(phi->getIncomingValue(i), shiftToMultiply, scx, contents, phiSelections, visited))
+                    if (auto* nested = FindNextLoweredPhi(phi->getIncomingValue(i), dominators, phiSelections, visited))
                     {
                         return nested;
                     }
@@ -151,7 +245,7 @@ namespace SLOT
             {
                 for (Value* operand : inst->operands())
                 {
-                    if (auto* nested = FindNextLoweredPhi(operand, shiftToMultiply, scx, contents, phiSelections, visited))
+                    if (auto* nested = FindNextLoweredPhi(operand, dominators, phiSelections, visited))
                     {
                         return nested;
                     }
@@ -162,7 +256,7 @@ namespace SLOT
         }
     }
 
-    LLVMFunction::LLVMFunction(bool t_shiftToMultiply, context& t_scx, Function* t_contents) : shiftToMultiply(t_shiftToMultiply), scx(t_scx), contents(t_contents), extraVariables(t_scx.bool_val(true)), hasExtraConstraints(false)
+    LLVMFunction::LLVMFunction(bool t_shiftToMultiply, context& t_scx, Function* t_contents) : shiftToMultiply(t_shiftToMultiply), scx(t_scx), contents(t_contents), dominators(*t_contents), extraVariables(t_scx.bool_val(true)), hasExtraConstraints(false)
     {
         scx.set_rounding_mode(RNE);
         for (Argument* arg = contents->arg_begin(); arg < contents->arg_end(); arg++)
@@ -231,13 +325,22 @@ namespace SLOT
         return hasExtraConstraints ? (extraVariables && fromChildren) : fromChildren;
     }
 
-    std::vector<expr> LLVMFunction::ToSMTQueries(PathExplorationStrategy strategy, size_t maxPaths)
+    std::vector<expr> LLVMFunction::ToSMTQueries(PathExplorationStrategy strategy, size_t maxPaths,
+                                               PathOptimizationStats* pathOptimization)
     {
         ReturnInst* ret = FindSingleReturn(contents);
         std::deque<PathState> worklist = {PathState{std::map<const Value *, const Value *>(), scx.bool_val(true)}};
         std::vector<expr> queries;
 
         auto makeQuery = [&](const PathState& state) {
+            if (pathOptimization && !state.phiSelections.empty())
+            {
+                expr body = OptimizePathBody(contents, dominators, ret->getOperand(0), state,
+                                             shiftToMultiply, scx, *pathOptimization);
+                // The body is specialized to the selected operands. Its domain
+                // restriction must survive even if the body becomes constant.
+                return (state.condition && body).simplify();
+            }
             LLVMFunction evaluator(shiftToMultiply, scx, contents);
             evaluator.phiSelections = state.phiSelections;
             expr body = evaluator.ToSMT();
@@ -246,14 +349,14 @@ namespace SLOT
 
         auto splitState = [&](const PathState& state, std::vector<PathState>& out) {
             std::set<const Value *> visited;
-            PHINode* phi = FindNextLoweredPhi(ret->getOperand(0), shiftToMultiply, scx, contents, state.phiSelections, visited);
+            PHINode* phi = FindNextLoweredPhi(ret->getOperand(0), dominators, state.phiSelections, visited);
             if (phi == nullptr)
             {
                 return false;
             }
 
             LoweredPhiInfo info;
-            if (!GetLoweredPhiInfo(phi, info))
+            if (!GetLoweredPhiInfo(phi, info, dominators))
             {
                 return false;
             }

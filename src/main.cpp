@@ -69,6 +69,7 @@ void Help()
   std::cout << "   -unmerge-random <n> : Lower n randomly chosen select instructions\n";
   std::cout << "   -unmerge-chain <n>  : Lower the n select instructions with the deepest condition chains\n";
   std::cout << "   -unmerge-all        : Lower all select instructions (no filtering)\n";
+  std::cout << "   -unmerge-sink       : Enable sinking after each lowered select (disabled by default)\n";
   std::cout << "   -li <file>     : Load LLVM IR directly (skip SMT2 frontend). Requires a function named '" << LLVM_FUNCTION_NAME << "'\n";
   std::cout << "   -single-query  : Produce one SMT query using implies-based encoding (no path splitting). Avoids exponential blowup on large inputs\n";
   std::cout << "   -disjunction-single-query : Produce one SMT query that is the disjunction of all split-path queries, instead of one query per path\n";
@@ -77,6 +78,7 @@ void Help()
   std::cout << "                     Default: 0 (unlimited, may OOM on inputs with many selects)\n";
   std::cout << "   -path-strategy <bfs|dfs> : Control SMT path splitting strategy. Default: bfs\n";
   std::cout << "   -bfs|-dfs      : Short aliases for -path-strategy bfs|dfs\n";
+  std::cout << "   -path-opt      : Optimize each selected path's LLVM body before SMT conversion; report totals on stderr\n";
 }
 
 // Not safe: assumes HasFlag returned true and that there is an argument after the flag of interest
@@ -290,6 +292,7 @@ LowerSelectConfig ParseUnmergeConfig(int argc, char *argv[], unsigned short &pas
   }
 
   LowerSelectConfig cfg;
+  cfg.enableSinking = HasFlag(argc, argv, "-unmerge-sink");
 
   if (hasFirst || hasLast || hasRandom || hasChain || hasAll)
   {
@@ -675,6 +678,13 @@ int main(int argc, char *argv[])
   PathExplorationStrategy pathStrategy = ParsePathStrategy(argc, argv);
   bool singleQuery = HasFlag(argc, argv, "-single-query");
   bool disjunctionSingleQuery = HasFlag(argc, argv, "-disjunction-single-query");
+  bool optimizePaths = HasFlag(argc, argv, "-path-opt");
+  if (optimizePaths && singleQuery)
+  {
+    std::cerr << "-path-opt requires path splitting; it cannot be used with -single-query.\n";
+    return 1;
+  }
+  PathOptimizationStats pathOptimization;
 
   size_t maxPaths = 0;
   if (HasFlag(argc, argv, "-max-paths"))
@@ -819,7 +829,7 @@ int main(int argc, char *argv[])
   else if (disjunctionSingleQuery)
   {
     // SINGLE QUERY WITH DISJUNCTION
-    std::vector<expr> smtQueries = f.ToSMTQueries(pathStrategy, maxPaths);
+    std::vector<expr> smtQueries = f.ToSMTQueries(pathStrategy, maxPaths, optimizePaths ? &pathOptimization : nullptr);
     expr_vector paths(c);
     for (const expr &query : smtQueries)
     {
@@ -832,7 +842,7 @@ int main(int argc, char *argv[])
   }
   else
   {
-      std::vector<expr> smtQueries = f.ToSMTQueries(pathStrategy, maxPaths);
+      std::vector<expr> smtQueries = f.ToSMTQueries(pathStrategy, maxPaths, optimizePaths ? &pathOptimization : nullptr);
       for (size_t i = 0; i < smtQueries.size(); ++i)
       {
         solver querySolver(c);
@@ -849,6 +859,13 @@ int main(int argc, char *argv[])
 
   auto backEnd = high_resolution_clock::now();
   duration<double> backTime = backEnd - backStart;
+  if (optimizePaths)
+  {
+    std::cerr << "path-opt: paths=" << pathOptimization.paths
+              << " instructions-before=" << pathOptimization.instructionsBefore
+              << " instructions-after=" << pathOptimization.instructionsAfter
+              << " seconds=" << pathOptimization.seconds << "\n";
+  }
 
   // Print output constraint
   char *outputFilename;
