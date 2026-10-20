@@ -4,14 +4,14 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)
 
 BENCHMARK_DIR="${script_dir}/../slot-benchmark-sat-with-select"
 BENCHMARK_LIST="${script_dir}/../torun.txt"
-DEFAULT_RESULTS_DIR="${script_dir}/../select-results-strategies"
+DEFAULT_RESULTS_DIR="${script_dir}/../select-results-strategies-opt-conversion"
 DEFAULT_EXPERIMENTAL_DIR="${script_dir}/../reroll"
 SLOT="${script_dir}/../src/slot"
 SOLVERS_DIR="${script_dir}/../solvers"
 PARALLEL_SOLVER="${script_dir}/parallel_solver.py"
 # STRATEGIES=(first last random chain all-bfs all-dfs opt)
 # STRATEGIES=(chain chain-sink chained-single-query chain-path-opt chained-single-query-path-opt)
-STRATEGIES=(chain chain-sink)
+STRATEGIES=(chain)
 
 STRATEGIES_UNSAT=(chain opt chained-single-query)
 

@@ -20,6 +20,7 @@
 
 #include <iostream>
 #include <map>
+#include <unordered_map>
 
 #include"z3++.h"
 
@@ -72,6 +73,9 @@ namespace SLOT
       SMTNode(LLVMContext& t_lcx, Module* t_lmodule, IRBuilder<>& t_builder, const LLMAPPING& t_variables, expr t_contents);
       virtual ~SMTNode() {}
       virtual Value* ToLLVM() = 0;
+
+      //Z3 AST id -> translated value, shared by all nodes; cleared per formula
+      static std::unordered_map<unsigned, Value*> cache;
   };
 
   //--------------------------------------------------------------------------------

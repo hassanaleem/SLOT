@@ -11,16 +11,18 @@ benchmarks across every line drawn together on one plot):
     (chain, chain-sink, chained-single-query, and their path-opt variants)
   - ../z3-variants.csv / ../cvc5-variants.csv (baseline + flag variants)
 
-Writes into this directory:
+Writes PDF and PNG versions into this directory:
   z3_cactus_chain_vs_chained_single_query_{solver,total}.pdf
   cvc5_cactus_chain_vs_chained_single_query_{solver,total}.pdf
                                            - the four ThunderFork strategies,
                                              with and without per-path optimization
   {z3,cvc5}_cactus_chain_vs_chain_sink_{solver,total}.pdf
                                            - chain vs chain-sink
+  thunderfork_vs_slot_{solver,total}.pdf - ThunderFork vs SLOT, Z3 and cvc5
   z3_cactus_baseline_{solver,total}.pdf   - chain vs z3 baseline vs z3+flag
   cvc5_cactus_baseline_{solver,total}.pdf - chain vs cvc5 baseline vs cvc5+ite(-heuristics)
 """
+import argparse
 from pathlib import Path
 
 import matplotlib
@@ -36,6 +38,7 @@ from plot_paired_scatter import (
 )
 
 GRAPHS_DIR = Path(__file__).parent
+POSTER_MODE = False
 
 # dataviz skill: validated categorical order, fixed assignment (never cycled)
 SURFACE = "#ffffff"
@@ -104,20 +107,23 @@ def survival_xy(times):
     return xs, ys
 
 
-def plot_cactus(series, total_attempted, filename):
+def plot_cactus(series, total_attempted, filename, legend_loc="best"):
     """series: list of (label, color, times) tuples, drawn in the given order."""
-    fig, ax = plt.subplots(figsize=(8.5, 6.5), dpi=150)
+    if POSTER_MODE:
+        fig = plt.figure(figsize=(25 / 2.54, 21 / 2.54), dpi=150)
+        ax = fig.add_axes((0.17, 0.16, 0.79, 0.79))
+    else:
+        fig, ax = plt.subplots(figsize=(18, 14), dpi=150)
     fig.patch.set_facecolor(SURFACE)
     ax.set_facecolor(SURFACE)
 
     max_y = 1.0
     for label, color, times in series:
-        if not times:
-            continue
         xs, ys = survival_xy(times)
-        max_y = max(max_y, max(ys))
-        ax.plot(xs, ys, color=color, linewidth=2, solid_capstyle="round",
-                 label=f"{label} ({len(ys)}/{total_attempted})", zorder=3)
+        max_y = max(max_y, max(ys, default=1.0))
+        ax.plot(xs, ys, color=color, linewidth=4, solid_capstyle="round",
+                 marker="o" if len(ys) == 1 else None,
+                 label=label, zorder=3)
 
     ax.set_yscale("log")
     ax.set_xlim(0, total_attempted + 1)
@@ -126,22 +132,39 @@ def plot_cactus(series, total_attempted, filename):
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
     ax.grid(axis="y", color=GRIDLINE, linewidth=0.8, zorder=0)
 
-    ax.set_xlabel("Benchmarks solved (cumulative, sorted by time)", color=INK_SECONDARY, fontsize=12)
-    ax.set_ylabel("Time (seconds, log scale)", color=INK_SECONDARY, fontsize=12)
-    ax.tick_params(colors=INK_MUTED, labelsize=9)
+    ax.set_xlabel("Benchmarks solved",
+                  color="#222222" if POSTER_MODE else INK_SECONDARY,
+                  fontsize=26 if POSTER_MODE else 30)
+    metric_label = "Solver time" if Path(filename).stem.endswith("_solver") else "Total time"
+    ax.set_ylabel(f"{metric_label}(s, log scale)",
+                  color="#222222" if POSTER_MODE else INK_SECONDARY,
+                  fontsize=26 if POSTER_MODE else 30)
+    ax.tick_params(colors="#222222" if POSTER_MODE else INK_MUTED,
+                   labelsize=24 if POSTER_MODE else 30)
+    if POSTER_MODE:
+        ax.xaxis.set_major_locator(mticker.MultipleLocator(10))
     for spine in ax.spines.values():
         spine.set_color(BASELINE_AXIS)
 
-    ax.legend(loc="best", ncol=1, frameon=True, facecolor=SURFACE,
-              edgecolor="none", framealpha=0.9, fontsize=12,
-              labelcolor=INK_SECONDARY, handlelength=1.8, columnspacing=1.3)
-
-    fig.tight_layout()
-    out_path = GRAPHS_DIR / filename
-    fig.savefig(out_path, facecolor=SURFACE, bbox_inches="tight")
-    plt.close(fig)
+    if POSTER_MODE:
+        ax.legend(loc="upper left", frameon=True, facecolor=SURFACE,
+                  edgecolor="none", framealpha=0.9, fontsize=24,
+                  labelcolor="#222222", handlelength=1.5, labelspacing=0.25)
+    else:
+        ax.legend(loc=legend_loc, ncol=1, frameon=True, facecolor=SURFACE,
+                  edgecolor="none", framealpha=0.9, fontsize=30,
+                  labelcolor=INK_SECONDARY, handlelength=1.8, columnspacing=1.3)
+        fig.tight_layout()
     counts = ", ".join(f"{label}={len(times)}" for label, _, times in series)
-    print(f"wrote {out_path} (of {total_attempted} attempted: {counts})")
+    output_dir = GRAPHS_DIR / "poster" if POSTER_MODE else GRAPHS_DIR
+    output_dir.mkdir(exist_ok=True)
+    for extension in (".pdf", ".png"):
+        out_path = (output_dir / filename).with_suffix(extension)
+        fig.savefig(out_path, facecolor=SURFACE,
+                    bbox_inches=None if POSTER_MODE else "tight",
+                    dpi=300 if POSTER_MODE else 200)
+        print(f"wrote {out_path} (of {total_attempted} attempted: {counts})")
+    plt.close(fig)
 
 
 def plot_chain_sink(idx, solver_name, metric_suffix, metric_tag):
@@ -166,7 +189,60 @@ def plot_chain_sink(idx, solver_name, metric_suffix, metric_tag):
     plot_cactus(series, len(common_keys), filename)
 
 
+
+def build_slot_comparisons():
+    """Compare both solvers using current breakdown data and shared benchmarks."""
+    z3_idx = load_breakdown_index(Z3_BREAKDOWN_CSV)
+    cvc5_idx = load_breakdown_index(CVC5_BREAKDOWN_CSV)
+    methods = [
+        ("ThunderFork–Z3", ORANGE, z3_idx, "chain"),
+        ("SLOT–Z3", BLUE, z3_idx, "slot"),
+        ("ThunderFork–cvc5", AQUA, cvc5_idx, "chain"),
+        ("SLOT–cvc5", PURPLE, cvc5_idx, "slot"),
+    ]
+    for metric_suffix, metric_tag in [
+        ("solver_time", "solver"), ("total_seconds", "total"),
+    ]:
+        common_keys = [
+            key for key in sorted(z3_idx.keys() & cvc5_idx.keys())
+            if all(parse_time(idx[key], f"{method}_{metric_suffix}") is not None
+                   for _, _, idx, method in methods)
+        ]
+        filename = f"thunderfork_vs_slot_{metric_tag}.pdf"
+        if not common_keys:
+            print(f"skipped {filename} (no paired data)")
+            continue
+        print(f"SLOT comparison: {len(common_keys)} shared benchmarks with all four timings "
+              f"(Z3 has {len(z3_idx)} inputs; cvc5 has {len(cvc5_idx)} inputs)")
+        series = [
+            (label, color, breakdown_series_common(idx, method, metric_suffix, common_keys))
+            for label, color, idx, method in methods
+        ]
+        plot_cactus(series, len(common_keys), filename, legend_loc="upper left")
+
+
+def plot_z3_baseline(z3_idx, z3_variants_idx, metric_suffix, metric_tag):
+    common_keys = sorted(z3_idx.keys() & z3_variants_idx.keys())
+    series = [
+        ("ThunderFork", ORANGE, breakdown_series_common(z3_idx, "chain", metric_suffix, common_keys)),
+        ("z3 baseline", BLUE, variant_series_common(z3_variants_idx, "time-z3", "result-z3", common_keys)),
+        ("z3 + simplify-split-clause", AQUA,
+         variant_series_common(z3_variants_idx, "time-simplify-split-clause", "result-simplify-split-clause", common_keys)),
+    ]
+    plot_cactus(series, len(common_keys),
+                f"z3_cactus_baseline_{metric_tag}.pdf", legend_loc="upper left")
+
+
+def build_requested_comparisons():
+    build_slot_comparisons()
+    z3_idx = load_breakdown_index(Z3_BREAKDOWN_CSV)
+    z3_variants_idx = load_variants_index(Z3_VARIANTS_CSV)
+    for metric_suffix, metric_tag in [("solver_time", "solver"), ("total_seconds", "total")]:
+        plot_z3_baseline(z3_idx, z3_variants_idx, metric_suffix, metric_tag)
+
+
 def build_and_plot():
+    build_slot_comparisons()
     z3_idx = load_breakdown_index(Z3_BREAKDOWN_CSV)
     cvc5_idx = load_breakdown_index(CVC5_BREAKDOWN_CSV)
     z3_variants_idx = load_variants_index(Z3_VARIANTS_CSV)
@@ -174,7 +250,6 @@ def build_and_plot():
 
     # --- chain vs baseline solvers: restrict to benchmarks common to the
     # breakdown CSV and the variants CSV, so every line shares one denominator. ---
-    z3_common = sorted(z3_idx.keys() & z3_variants_idx.keys())
     cvc5_common = sorted(cvc5_idx.keys() & cvc5_variants_idx.keys())
 
     for metric_suffix, metric_tag in [
@@ -193,14 +268,7 @@ def build_and_plot():
                 f"{solver_name}_cactus_chain_vs_chained_single_query_{metric_tag}.pdf",
             )
 
-        z3_series = [
-            ("ThunderFork", ORANGE, breakdown_series_common(z3_idx, "chain", metric_suffix, z3_common)),
-            ("z3 baseline", BLUE, variant_series_common(z3_variants_idx, "time-z3", "result-z3", z3_common)),
-            ("z3 + simplify-split-clause", AQUA,
-             variant_series_common(z3_variants_idx, "time-simplify-split-clause", "result-simplify-split-clause", z3_common)),
-        ]
-        plot_cactus(z3_series, len(z3_common),
-                    f"z3_cactus_baseline_{metric_tag}.pdf")
+        plot_z3_baseline(z3_idx, z3_variants_idx, metric_suffix, metric_tag)
 
         cvc5_series = [
             ("ThunderFork", ORANGE, breakdown_series_common(cvc5_idx, "chain", metric_suffix, cvc5_common)),
@@ -211,8 +279,23 @@ def build_and_plot():
              variant_series_common(cvc5_variants_idx, "time-cvc5-ite-heuristics", "result-cvc5-ite-heuristics", cvc5_common)),
         ]
         plot_cactus(cvc5_series, len(cvc5_common),
-                    f"cvc5_cactus_baseline_{metric_tag}.pdf")
+                    f"cvc5_cactus_baseline_{metric_tag}.pdf", legend_loc="upper left")
 
 
 if __name__ == "__main__":
-    build_and_plot()
+    parser = argparse.ArgumentParser(description=__doc__)
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--slot-only", action="store_true",
+                        help="generate only ThunderFork versus SLOT plots")
+    selection.add_argument("--requested-only", action="store_true",
+                           help="generate ThunderFork versus Z3 configurations and SLOT, in PDF and PNG")
+    parser.add_argument("--poster", action="store_true",
+                        help="save 25 cm wide figures with print-sized text in graphs/poster")
+    args = parser.parse_args()
+    POSTER_MODE = args.poster
+    if args.slot_only:
+        build_slot_comparisons()
+    elif args.requested_only:
+        build_requested_comparisons()
+    else:
+        build_and_plot()

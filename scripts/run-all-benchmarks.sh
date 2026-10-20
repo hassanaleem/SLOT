@@ -7,12 +7,12 @@ set -euo pipefail
 
 results_dir="${1:-$DEFAULT_RESULTS_DIR}"
 
-foreach_benchmark "$results_dir" "$script_dir/smt-to-ir.sh"
+I want to use this as something to see if a query is worthi spliting.
 
-for strategy in "${STRATEGIES[@]}"; do
-    foreach_benchmark "$results_dir" "$script_dir/smt-query-gen.sh" "$strategy"
-done
+# for strategy in "${STRATEGIES[@]}"; do
+#     foreach_benchmark "$results_dir" "$script_dir/smt-query-gen.sh" "$strategy"
+# done
 
-for strategy in "${STRATEGIES[@]}"; do
-    foreach_benchmark "$results_dir" "$script_dir/query-solver.sh" "$strategy"
-done
+# for strategy in "${STRATEGIES[@]}"; do
+#     foreach_benchmark "$results_dir" "$script_dir/query-solver.sh" "$strategy"
+# done

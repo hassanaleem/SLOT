@@ -107,6 +107,7 @@ namespace SLOT
     {
         BasicBlock* bb = BasicBlock::Create(lcx, "b", function);
         builder.SetInsertPoint(bb);
+        SMTNode::cache.clear();
         
         if (assertions.size() == 0)
         {

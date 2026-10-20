@@ -32,6 +32,8 @@ namespace SLOT
 
     }
 
+    std::unordered_map<unsigned, Value*> SMTNode::cache;
+
     //Returns LLVM rounding mode argument for constrained intrinsics
     MetadataAsValue* SMTNode::LLVMRoundingMode()
     {
@@ -67,6 +69,13 @@ namespace SLOT
 
     Value* BooleanNode::ToLLVM()
     {
+        //Memoize on the Z3 AST id so shared subterms are translated only once
+        Value*& cached = cache[contents.id()];
+        if (cached)
+        {
+            return cached;
+        }
+        return cached = [&]() -> Value* {
         if (IsVariable())
         {
             return variables.at(StrippedName());
@@ -106,8 +115,11 @@ namespace SLOT
                     }
                     return temp;
                 case Z3_OP_IMPLIES:
+                {
                     assert(contents.num_args()==2);
-                    return builder.CreateOr(builder.CreateNot(BooleanChild(0).ToLLVM()),BooleanChild(1).ToLLVM());
+                    Value* guard = BooleanChild(0).ToLLVM();
+                    return builder.CreateSelect(guard,BooleanChild(1).ToLLVM(),builder.getTrue());
+                }
                 case Z3_OP_ITE:
                     assert(contents.num_args()==3);
                     return builder.CreateSelect(BooleanChild(0).ToLLVM(),BooleanChild(1).ToLLVM(),BooleanChild(2).ToLLVM());
@@ -243,6 +255,7 @@ namespace SLOT
                     throw UnsupportedSMTOpException(X_BOOLEAN_OP, contents);
             }
         }
+        }();
     }
 
 
@@ -265,6 +278,13 @@ namespace SLOT
     //TODO: fill in this function
     Value * BitvectorNode::ToLLVM()
     {
+        //Memoize on the Z3 AST id so shared subterms are translated only once
+        Value*& cached = cache[contents.id()];
+        if (cached)
+        {
+            return cached;
+        }
+        return cached = [&]() -> Value* {
         if (IsVariable())
         {
             return variables.at(StrippedName());
@@ -280,7 +300,6 @@ namespace SLOT
         {
             Value * one = ConstantInt::get(IntegerType::get(lcx, Width()), 1);
             Value * mone = builder.CreateNeg(one); //ConstantInt::get(IntegerType::get(lcx, Width()), -1);
-            context c;
             Function * fun;
             std::vector<Value *> args;
             Value *temp, *u, *sel0, *sel1, *sel2;
@@ -467,7 +486,7 @@ namespace SLOT
 
                     args.push_back(temp);
                     args.push_back(temp);
-                    args.push_back(ConstantInt::get(ity, Z3_get_decl_int_parameter(c, contents.decl(),0)%Width()));
+                    args.push_back(ConstantInt::get(ity, Z3_get_decl_int_parameter(contents.ctx(), contents.decl(),0)%Width()));
 
                     fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::fshl, ity);
                     return builder.CreateCall(fun,args);
@@ -479,7 +498,7 @@ namespace SLOT
 
                     args.push_back(temp);
                     args.push_back(temp);
-                    args.push_back(ConstantInt::get(ity, Z3_get_decl_int_parameter(c, contents.decl(),0)%Width()));
+                    args.push_back(ConstantInt::get(ity, Z3_get_decl_int_parameter(contents.ctx(), contents.decl(),0)%Width()));
 
                     fun = Intrinsic::getOrInsertDeclaration(lmodule, Intrinsic::fshr, ity);
                     return builder.CreateCall(fun,args);
@@ -487,6 +506,7 @@ namespace SLOT
                     throw UnsupportedSMTOpException(X_BV_OP, contents);
             }
         }
+        }();
     }
 
 
@@ -575,6 +595,13 @@ namespace SLOT
     //TODO: fill in this function
     Value * FloatingNode::ToLLVM()
     {
+        //Memoize on the Z3 AST id so shared subterms are translated only once
+        Value*& cached = cache[contents.id()];
+        if (cached)
+        {
+            return cached;
+        }
+        return cached = [&]() -> Value* {
         if (IsVariable())
         {
             return variables.at(StrippedName());
@@ -849,5 +876,6 @@ namespace SLOT
                     throw UnsupportedSMTOpException(X_FP_OP, contents);
             }
         }
+        }();
     }
 }

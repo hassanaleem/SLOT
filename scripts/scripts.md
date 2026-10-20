@@ -163,6 +163,23 @@ in the attempted count but are excluded from the solved curves.
 python3 graphs/plot_cactus.py
 ```
 
+
+ThunderFork versus SLOT cactus plots use the current `chain_*` measurements
+above and saved `slot_*` measurements from
+`scripts/result-csv/time_breakdown-llvm22-{z3,cvc5}.csv`, because the current
+CSVs have empty SLOT columns. These are separate runs paired by benchmark
+identity. Outputs are `graphs/{z3,cvc5}_cactus_chain_vs_slot_{solver,total}.pdf`;
+`solver` uses solver time and `total` includes conversion and generation.
+Only benchmarks with both timings enter the comparison. The existing 650-second
+timeout rule checks both solver and total time, retaining timeouts in the
+attempted count while excluding them from each solved curve.
+
+To generate just these comparisons:
+
+```bash
+python3 graphs/plot_cactus.py --slot-only
+```
+
 ### `make_unsat_time_breakdown_csv.py`
 Collects only the benchmarks listed in `torun-unsat.txt` and writes `scripts/time_breakdown_unsat.csv`. Like the general collector, it reads every available timing log without inferring eligibility from select counts. It records solver/result status, excludes stale non-manifest runs, and leaves numeric solver/total fields blank for parse errors or other invalid outcomes.
 

@@ -5,6 +5,9 @@
 #include <sstream>
 #include <chrono>
 #include <vector>
+#include <functional>
+#include <unordered_map>
+#include <stdexcept>
 
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
@@ -104,6 +107,48 @@ bool HasFlag(int argc, char *argv[], const std::string &flag)
     }
   }
   return false;
+}
+
+// Restore standard division/remainder operators after Z3 simplification.
+// Rewrite the AST before printing so user-defined symbol names stay intact.
+z3::expr ToStandardSMTExpr(const z3::expr &root)
+{
+  std::unordered_map<unsigned, z3::expr> cache;
+  std::function<z3::expr(const z3::expr &)> rewrite =
+      [&](const z3::expr &e) -> z3::expr
+  {
+    auto it = cache.find(e.id());
+    if (it != cache.end())
+      return it->second;
+
+    if (!e.is_app())
+      throw std::invalid_argument("Expected a quantifier-free expression");
+
+    z3::expr_vector args(e.ctx());
+    for (unsigned i = 0; i < e.num_args(); ++i)
+      args.push_back(rewrite(e.arg(i)));
+
+    z3::expr result = e;
+    switch (e.decl().decl_kind())
+    {
+    case Z3_OP_BUDIV_I:
+      result = z3::udiv(args[0], args[1]); break;
+    case Z3_OP_BSDIV_I:
+      result = args[0] / args[1]; break;
+    case Z3_OP_BUREM_I:
+      result = z3::urem(args[0], args[1]); break;
+    case Z3_OP_BSREM_I:
+      result = z3::srem(args[0], args[1]); break;
+    case Z3_OP_BSMOD_I:
+      result = z3::smod(args[0], args[1]); break;
+    default:
+      result = e.decl()(args); break;
+    }
+
+    cache.emplace(e.id(), result);
+    return result;
+  };
+  return rewrite(root);
 }
 
 PathExplorationStrategy ParsePathStrategy(int argc, char *argv[])
@@ -822,7 +867,7 @@ int main(int argc, char *argv[])
   if (singleQuery)
   {
     solver querySolver(c);
-    querySolver.add(f.ToSMT());
+    querySolver.add(ToStandardSMTExpr(f.ToSMT()));
     smtOut << "; query 1\n";
     smtOut << querySolver.to_smt2();
   }
@@ -836,7 +881,7 @@ int main(int argc, char *argv[])
       paths.push_back(query);
     }
     solver querySolver(c);
-    querySolver.add(mk_or(paths));
+    querySolver.add(ToStandardSMTExpr(mk_or(paths)));
     smtOut << "; query 1 (disjunction of " << smtQueries.size() << " paths)\n";
     smtOut << querySolver.to_smt2();
   }
@@ -846,7 +891,7 @@ int main(int argc, char *argv[])
       for (size_t i = 0; i < smtQueries.size(); ++i)
       {
         solver querySolver(c);
-        querySolver.add(smtQueries[i]);
+        querySolver.add(ToStandardSMTExpr(smtQueries[i]));
         if (i > 0)
         {
           smtOut << "\n(reset)\n";
