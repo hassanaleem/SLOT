@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -euo pipefail
-script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 SOLVER=cvc5 "$script_dir/run-all-benchmarks.sh" \
     "$script_dir/../select-results-strategies"

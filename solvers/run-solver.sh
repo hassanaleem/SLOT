@@ -18,8 +18,8 @@ trap 'exit 143' HUP INT TERM
 start_ns=$(date +%s%N)
 status=0
 # --foreground keeps the solver in this script's process group; without it
-# timeout moves it into a new group, where parallel_solver.py's killpg can
-# never reach it.
+# timeout moves it into a new group, where the parallel scheduler's group kill cannot
+# reach it.
 stdout=$(timeout --foreground "${SLOT_SOLVER_TIMEOUT_SECONDS:-0}" "$solver" "$input_file" 2>"$stderr_file") || status=$?
 end_ns=$(date +%s%N)
 

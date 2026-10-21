@@ -9,7 +9,7 @@
 #     strategies you've already solved there rather than re-solving)
 #   - z3   -> ../unsat-z3 (fresh tree)
 set -euo pipefail
-script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 SOLVER=cvc5 "$script_dir/run-all-unsat.sh" \
     "$script_dir/../unsat" \

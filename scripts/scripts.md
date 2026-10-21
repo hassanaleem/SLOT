@@ -3,7 +3,7 @@
 ## Where the solver runs
 
 `run-variant.sh` Phase 3 calls the solver on the generated `.smt2` file:
-- All strategies except `opt` → `parallel_solver.py` (bounded-parallel, stops at first SAT)
+- All strategies except `opt` → the C++ `parallel_solver` (bounded-parallel, stops at first SAT)
 - `opt` → `solvers/run-solver.sh` directly (single query)
 
 ---
@@ -108,13 +108,22 @@ scripts/run-all-unsat.sh /custom/results/dir /custom/time_breakdown_unsat.csv
 
 ## Solving
 
-### `parallel_solver.py`
+### `parallel_solver` (C++)
 Splits a multi-query `.smt2` file into individual queries, runs up to N solver workers concurrently, and stops at the first SAT result.
 
 ```bash
-python3 scripts/parallel_solver.py path/to/file.smt2 --solver z3 --workers 16
-python3 scripts/parallel_solver.py path/to/file.smt2 --solver cvc5
+make -C scripts parallel_solver
+scripts/parallel_solver path/to/file.smt2 --solver z3 --workers 32
+scripts/parallel_solver path/to/file.smt2 --solver cvc5
 ```
+
+The outer drivers source `common.sh`, which runs make once before the phases
+start. An exported guard prevents child scripts from repeating the build.
+`query-solver.sh` invokes the compiled executable without its own make call.
+Building requires a C++17 compiler and make. Keep the executable in `scripts/` so it
+can locate `solvers/run-solver.sh`. The Python implementation remains as a
+reference; runtime scripts do not invoke it. Log formats and solver settings
+are unchanged. The scalability driver exports `WORKERS=32`.
 
 ---
 
@@ -228,7 +237,7 @@ Sourced by the shell scripts above. Defines shared paths and helpers — not run
 | `DEFAULT_RESULTS_DIR` | `select-results-strategies/` |
 | `SLOT` | `src/slot` |
 | `SOLVERS_DIR` | `solvers/` |
-| `PARALLEL_SOLVER` | `scripts/parallel_solver.py` |
+| `PARALLEL_SOLVER` | `scripts/parallel_solver` (C++ executable) |
 | `STRATEGIES` | `(chain chained-single-query chain-path-opt chained-single-query-path-opt)` |
 | `SELECT_COUNT` | `5` |
 | `WORKERS` | `16` (env-overridable) |

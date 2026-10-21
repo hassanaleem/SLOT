@@ -75,7 +75,7 @@ def parse_opt_log(path):
 def parse_parallel_log(path):
     """Parse a parallel run without trusting its misleading final summary.
 
-    parallel_solver.py currently prints "No satisfying query found" after
+    The parallel scheduler prints "No satisfying query found" after
     parse errors.  A completed UNSAT run therefore requires exactly the
     declared number of query results, with every result equal to UNSAT.
     """

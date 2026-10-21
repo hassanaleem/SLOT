@@ -134,7 +134,7 @@ splitting, leaving the remaining lowered phis of a path in the `S1` implies-enco
 The driver emits each `Q_σ` as an independent query, separated by `(reset)`
 ([main.cpp:818-831](../src/main.cpp#L818-L831)). The disjunction `⋁_{σ∈Σ} Q_σ` is
 never materialized as one formula; instead it is decided **existentially** by
-[parallel_solver.py](../scripts/parallel_solver.py), which splits the file at each
+[parallel_solver.cpp](../scripts/parallel_solver.cpp), which splits the file at each
 `(check-sat)`, runs the queries concurrently, and **stops at the first `sat`** —
 reporting UNSAT only if every query is UNSAT. The point of the theorem below is
 exactly that this is sound: although up to `2^x` queries are produced, deciding the
@@ -313,7 +313,7 @@ disjunction is never built as a formula, and we never need all `2^x` answers.
 
 ### 3.1 Decision procedure — a single satisfiable query suffices
 
-This is what [parallel_solver.py](../scripts/parallel_solver.py) realizes (run the
+This is what [parallel_solver.cpp](../scripts/parallel_solver.cpp) realizes (run the
 `Q_σ` concurrently, stop at the first `sat`).
 
 **Theorem (single-query reduction).** Let `R` be any procedure that searches `Σ` and
@@ -353,7 +353,7 @@ weakens.
   OR-ing the verdicts is exactly correct.
 - **The disjunction is decided, not built.** The driver only serializes each `Q_σ`
   ([main.cpp:818-831](../src/main.cpp#L818-L831));
-  [parallel_solver.py](../scripts/parallel_solver.py) then solves the queries
+  [parallel_solver.cpp](../scripts/parallel_solver.cpp) then solves the queries
   concurrently and returns SAT on the first satisfiable one (killing the rest), UNSAT
   only if all fail. By §3.1 this is exactly a sound decision procedure for `F`: a
   single satisfiable query suffices, and no disjunction formula is ever constructed.

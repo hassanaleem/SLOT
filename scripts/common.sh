@@ -8,17 +8,18 @@ DEFAULT_RESULTS_DIR="${script_dir}/../select-results-strategies-opt-conversion"
 DEFAULT_EXPERIMENTAL_DIR="${script_dir}/../reroll"
 SLOT="${script_dir}/../src/slot"
 SOLVERS_DIR="${script_dir}/../solvers"
-PARALLEL_SOLVER="${script_dir}/parallel_solver.py"
+PARALLEL_SOLVER="${script_dir}/parallel_solver"
 # STRATEGIES=(first last random chain all-bfs all-dfs opt)
 # STRATEGIES=(chain chain-sink chained-single-query chain-path-opt chained-single-query-path-opt)
 STRATEGIES=(chain)
 
 STRATEGIES_UNSAT=(chain opt chained-single-query)
 
-SELECT_COUNT=5
+SELECT_COUNT="${SELECT_COUNT:-5}"
+
 # Solver binary to use (z3, cvc5, mathsat, opensmt); must be on PATH.
 SOLVER="${SOLVER:-z3}"
-# Wall-clock budget for one benchmark solve: parallel_solver.py enforces it
+# Wall-clock budget for one benchmark solve: parallel_solver enforces it
 # across the whole run, run-solver.sh per invocation (exported to reach both).
 export SLOT_SOLVER_TIMEOUT_SECONDS="${SLOT_SOLVER_TIMEOUT_SECONDS:-650}"
 WORKERS="${WORKERS:-16}"
@@ -30,6 +31,14 @@ SKIP_DONE="${SKIP_DONE:-0}"
 if [ ! -x "$SLOT" ]; then
     echo "Missing executable: $SLOT" >&2
     return 1
+fi
+
+# Build once in the outer process; child scripts inherit this guard when
+# sourcing common.sh again. A different checkout gets its own build.
+if [ "${SLOT_PARALLEL_SOLVER_BUILT:-}" != "$PARALLEL_SOLVER" ] || [ ! -x "$PARALLEL_SOLVER" ]; then
+    make -s -C "$script_dir" parallel_solver || return $?
+    [ -x "$PARALLEL_SOLVER" ] || { echo "Missing executable: $PARALLEL_SOLVER" >&2; return 1; }
+    export SLOT_PARALLEL_SOLVER_BUILT="$PARALLEL_SOLVER"
 fi
 
 # strategy_flags <strategy> — sets slot_flags with the slot arguments for the strategy
